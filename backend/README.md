@@ -707,4 +707,4 @@ JWT_SECRET=your_jwt_signature_secret_key_here
    
 ---
 
-*Developed by the Evolts Team.*
+
