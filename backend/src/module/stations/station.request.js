@@ -40,6 +40,22 @@ const getAllStationsRequest = z
       .min(0, "minPrice must be greater than 0")
       .optional(),
     maxPrice: z.coerce.number().min(0, "maxPrice must be atleast 0").optional(),
+    lat: z.coerce
+      .number()
+      .min(-90, "Latitude must be between -90 and 90")
+      .max(90, "Latitude must be between -90 and 90")
+      .optional(),
+    lng: z.coerce
+      .number()
+      .min(-180, "Longitude must be between -180 and 180")
+      .max(180, "Longitude must be between -180 and 180")
+      .optional(),
+    radius: z.coerce
+      .number()
+      .min(1, "Radius must be at least 1 meter")
+      .max(100000, "Radius cannot exceed 100km (100,000 meters)")
+      .default(5000)
+      .optional(),
     page: z.coerce
       .number()
       .min(1, "page number should be atleast 1")

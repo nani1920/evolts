@@ -46,10 +46,8 @@ const stationSchema = new mongoose.Schema({
   },
 });
 
-stationSchema.index({
-  location: "2dsphere",
-  name: "text",
-});
+stationSchema.index({ location: "2dsphere" });
+stationSchema.index({ name: "text" });
 
 const stationModel = mongoose.model("station", stationSchema);
 module.exports = {

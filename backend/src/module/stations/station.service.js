@@ -38,6 +38,7 @@ const createStationService = async (data) => {
 const getAllStationsService = async (options) => {
   const page = Number(options.page) || 1;
   const limit = Number(options.limit) || 10;
+
   const filters = {
     ...(options.name && {
       name: { $regex: `^${options.name}`, $options: "i" },
@@ -54,9 +55,18 @@ const getAllStationsService = async (options) => {
       : {}),
   };
 
-  console.log(filters);
+  let geoOptions = null;
+  if (options.lat && options.lng) {
+    geoOptions = {
+      lat: Number(options.lat),
+      lng: Number(options.lng),
+      radius: Number(options.radius) || 5000, // Default 5km
+    };
+  }
+
   const { totalItems, totalPages, stations } = await findAllStations(
     filters,
+    geoOptions,
     page,
     limit,
   );

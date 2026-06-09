@@ -20,22 +20,57 @@ const findStationByLocation = async (location) => {
   });
 };
 
-const findAllStations = async (filters = {}, page = 1, limit = 10) => {
-  // return await stationModel.find();
-  const result = await stationModel.aggregate([
-    { $match: filters },
-    {
-      $facet: {
-        stations: [{ $skip: (page - 1) * limit }, { $limit: limit }],
-        total: [{ $count: "count" }],
-      },
-    },
-  ]);
+const findAllStations = async (
+  filters = {},
+  geoOptions = null,
+  page = 1,
+  limit = 10,
+) => {
+  const pipeline = [];
 
-  const total = result[0]?.total[0]?.count;
+  if (geoOptions && geoOptions.lat && geoOptions.lng && geoOptions.radius) {
+    pipeline.push({
+      $geoNear: {
+        near: {
+          type: "Point",
+          coordinates: [Number(geoOptions.lng), Number(geoOptions.lat)],
+        },
+        maxDistance: geoOptions.radius,
+        distanceField: "distanceInMeters",
+        spherical: true,
+      },
+    });
+
+    pipeline.push({
+      $addFields: {
+        distance: {
+          $round: [{ $divide: ["$distanceInMeters", 1000] }, 1],
+        },
+      },
+    });
+  }
+
+  if (Object.keys(filters).length > 0) {
+    pipeline.push({ $match: filters });
+  }
+
+  pipeline.push({
+    $facet: {
+      stations: [{ $skip: (page - 1) * limit }, { $limit: limit }],
+      total: [{ $count: "count" }],
+    },
+  });
+
+  const result = await stationModel.aggregate(pipeline);
+
+  const total = result[0]?.total[0]?.count || 0;
   const totalPages = Math.ceil(total / limit);
 
-  return { totalItems: total, totalPages, stations: result[0].stations };
+  return {
+    totalItems: total,
+    totalPages,
+    stations: result[0]?.stations || [],
+  };
 };
 
 const findStationById = async (id) => {
