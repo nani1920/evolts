@@ -189,7 +189,7 @@ const getAvailableSlotsService = async (date, stationId) => {
 };
 
 //need to remove below functions
-const cancelBookingByIdService = async () => {};
+const cancelBookingByIdService = async () => { };
 
 // const getBookingsByStationIdService = async (params) => {
 //   const { stationId } = params;

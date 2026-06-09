@@ -87,7 +87,7 @@ const updateStationService = async (stationId, data) => {
     "location",
     "status",
     "pricing",
-    "chargerType",
+    "chargerTypes",
   ]);
 
   const updatedBody = {};

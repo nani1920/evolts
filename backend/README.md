@@ -10,23 +10,9 @@
 
 ---
 
-## 🧠 Core Concepts Covered
-
-This project demonstrates a production-ready EV charging management backend that implements:
-- **Layered Service-Repository Architecture**: Ensures strict Separation of Concerns (SoC) by dividing logic into Routers, Controllers, Services, and Repositories.
-- **Geospatial Location Queries**: Employs MongoDB `2dsphere` coordinates index and spatial query operators (e.g., `$near`, `$geometry`, `$maxDistance`) to locate nearby charging stations efficiently.
-- **Robust Request Validation**: Implements middleware utilizing Zod schemas for sanitizing and type-checking incoming payloads (Body, Query, Params).
-- **Role-Based Access Control (RBAC)**: Restricts administration privileges using authentication middlewares verifying JWT signatures and user role claims (`user` vs `admin`).
-- **State Machine Workflow Management**: Tracks booking reservation Lifecycles with strict role-based state transition maps.
-- **Database Query & Pagination Optimization**: Leverages Mongoose aggregation pipelines (`$match`, `$facet`, `$skip`, `$limit`) to handle paginated queries efficiently.
-- **Conflict Avoidance Logic**: Prevents double-booking by calculating chronological time slot overlaps.
-
----
-
 ## 📖 Table of Contents
-* [Core Concepts Covered](#-core-concepts-covered)
 * [Architecture Overview](#-architecture-overview)
-* [Core Features & Packages](#-core-features--packages)
+* [Core Features](#core-features)
 * [Directory Structure](#-directory-structure)
 * [Database Model Schemas](#-database-model-schemas)
   * [User Schema](#user-schema)
@@ -50,39 +36,28 @@ This project demonstrates a production-ready EV charging management backend that
 
 The Evolts API is designed using the **Layered Service-Repository Pattern**, enforcing clean separation of concerns, high testability, and scalability.
 
-```mermaid
-graph TD
-    Client[Client Request] -->|HTTP Request| Routes[Express Routes Router]
-    Routes -->|Token Check| AuthMiddleware{Auth Middleware}
-    Routes -->|Zod Validate| ValidateMiddleware{Validation Middleware}
-    
-    AuthMiddleware -->|Pass| ValidateMiddleware
-    AuthMiddleware -->|Fail - 401/403| SendError[Error Response]
-    
-    ValidateMiddleware -->|Pass| Controller[Controller Layer]
-    ValidateMiddleware -->|Fail - 400| SendError
-    
-    Controller -->|Delegates| Service[Service Layer]
-    Service -->|Business Logic / Checks| Repository[Repository Layer]
-    Repository -->|Database Queries| MongoDB[(MongoDB Database)]
-    
-    MongoDB -->|Result| Repository
-    Repository -->|Result| Service
-    Service -->|Data Model| Controller
-    Controller -->|Standardized JSON| Client
-```
+### Request Lifecycle Flow
+1. **Client Request**: Initiates an HTTP request to the API.
+2. **Routing & Middleware**:
+   * **Authentication**: Verifies JWT signatures and user role claims.
+   * **Validation**: Sanitizes and validates request bodies, queries, and parameters via Zod.
+3. **Controller Layer**: Decoupled request handler, extracts payloads, and delegates tasks to the services.
+4. **Service Layer**: Contains core business logic, validation rules, and interacts with repositories.
+5. **Repository Layer**: Executes operations on the MongoDB database.
+6. **Response**: Controllers return standardized JSON responses.
 
 ---
 
-## 🌟 Core Features & Packages
+## Core Features
 
-- [x] **Secure Authentication & RBAC**: Session management and signatures powered by `jsonwebtoken` (JWT) alongside secure salted hashing using `bcryptjs`.
-- [x] **Geospatial Location Indexing**: Leverages `mongoose` schemas with `2dsphere` spatial coordinates indexing to calculate proximity using MongoDB geolocation operators.
-- [x] **Strict Payload Validation**: Validates, parses, and coerces incoming request schemas (body, query, params) using `zod` declarative schema validation.
-- [x] **Real-time Slot Calculations**: Pure JavaScript date-time range logic integrated with `mongoose` queries to locate vacant hourly slots.
-- [x] **Role-Based State Machine**: State transition management utilizing `lodash` helper functions (`_.pick` and `_.omit`) for request filtering and data isolation.
-- [x] **Environment Configuration**: Safe storage of credentials, DB connection strings, and keys using `dotenv`.
-- [x] **Development Flow**: Hot-reloading development cycle powered by `nodemon`.
+- Secure Authentication & Authorization using JWT and Role-Based Access Control (RBAC).
+- Geospatial Search for locating nearby EV charging stations.
+- Request Validation to ensure data integrity and prevent invalid inputs.
+- Slot Availability Management with booking conflict detection.
+- Booking State Machine to enforce valid lifecycle transitions.
+- Pagination and Filtering for efficient data retrieval.
+- Environment-Based Configuration for secure application settings.
+- Centralized Error Handling for consistent API responses.
 
 ---
 
@@ -156,28 +131,21 @@ To guarantee database integrity and prevent double-booking:
    $$\text{Start}_{\text{existing}} < \text{End}_{\text{new}} \quad \text{AND} \quad \text{End}_{\text{existing}} > \text{Start}_{\text{new}}$$
 
 ### State Machine Transitions
-Booking updates follow a strict lifecycle flow. Standard users have limited capabilities compared to administrators:
+Booking updates follow a strict, role-based status lifecycle. Below are the allowed transitions for standard Users and Administrators:
 
-```mermaid
-stateDiagram-v2
-    [*] --> booked : Creation
-    
-    booked --> arrived : Check-In (User / Admin)
-    booked --> cancelled : Cancel (User / Admin)
-    
-    arrived --> charging : Connect Plug (User / Admin)
-    arrived --> cancelled : Cancel (User / Admin)
-    
-    charging --> completed : Stop Charging (User / Admin)
-    charging --> cancelled : Emergency Cancel (User / Admin)
-    
-    booked --> charging : Admin Override
-    booked --> completed : Admin Override
-    arrived --> completed : Admin Override
-    
-    completed --> [*]
-    cancelled --> [*]
-```
+| Current Status | Allowed Next Status (User) | Allowed Next Status (Admin) | Transition Description |
+| :--- | :--- | :--- | :--- |
+| `booked` | `arrived`, `cancelled` | `arrived`, `charging`, `completed`, `cancelled` | Check-in or cancel reservation. Admins can directly start or complete it. |
+| `arrived` | `charging`, `cancelled` | `charging`, `completed`, `cancelled` | Connect vehicle plug to start charging, or cancel. Admins can directly complete it. |
+| `charging` | `completed`, `cancelled` | `completed`, `cancelled` | Complete the charging session, or perform an emergency cancellation. |
+| `completed` | *None* | *None* | Final state. No further transitions allowed. |
+| `cancelled` | *None* | *None* | Final state. No further transitions allowed. |
+
+#### Lifecycle Rules
+* **Creation**: All reservations are initialized as `booked`.
+* **Standard Flow**: `booked` ➡️ `arrived` ➡️ `charging` ➡️ `completed`.
+* **Cancellations**: A session can be updated to `cancelled` by either the user or admin from any active state (`booked`, `arrived`, or `charging`).
+* **Admin Overrides**: Administrators can bypass intermediate states (e.g. going directly from `booked` to `charging` or `completed`).
 
 ---
 
@@ -191,23 +159,24 @@ stateDiagram-v2
 * **Request Headers**: `Content-Type: application/json`
 
 <details>
-<summary><b>View Request Body Template</b></summary>
+<summary><b>View Request Body Schema</b></summary>
 
 ```json
 {
-  "username": "John Doe",
-  "phoneNumber": "9876543210",
-  "email": "john@example.com",
-  "password": "secretPassword123",
-  "role": "user",
-  "vehicles": [
+  "username": "John Doe",           // String, min 3 chars
+  "phoneNumber": "9876543210",       // String, exact 10 digits
+  "email": "john@example.com",       // String, valid email format
+  "password": "secretPassword123",   // String, min 6 chars
+  "role": "user",                    // String, "user" | "admin" (Optional, default: "user")
+  "vehicles": [                      // Array of objects (Optional)
     {
-      "vehicleNo": "MH12AB1234",
-      "type": "4wheeler"
+      "vehicleNo": "MH12AB1234",     // String, exact 10 characters
+      "type": "4wheeler"             // String, "2wheeler" | "4wheeler"
     }
   ]
 }
 ```
+*Note: Although an array of vehicles is validated, the registration logic only extracts and registers the first vehicle object (`vehicles[0]`) from the array.*
 </details>
 
 <details>
@@ -227,14 +196,14 @@ stateDiagram-v2
       "vehicles": [
         {
           "vehicleNo": "MH12AB1234",
-          "type": "4wheeler",
-          "_id": "648a123abc456def78901235"
+          "type": "4wheeler"
         }
       ],
       "createdAt": "2026-06-09T08:00:00.000Z",
-      "updatedAt": "2026-06-09T08:00:00.000Z"
+      "updatedAt": "2026-06-09T08:00:00.000Z",
+      "__v": 0
     },
-    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY0OGExMjNhYmM0NTZkZWY3ODkwMTIzNCIsImVtYWlsIjoiam9obkBleGFtcGxlLmNvbSIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzg2Njg4MDAwLCJleHAiOjE3ODcyOTI4MDB9..."
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
   }
 }
 ```
@@ -246,12 +215,12 @@ stateDiagram-v2
 * **Request Headers**: `Content-Type: application/json`
 
 <details>
-<summary><b>View Request Body Template</b></summary>
+<summary><b>View Request Body Schema</b></summary>
 
 ```json
 {
-  "email": "john@example.com",
-  "password": "secretPassword123"
+  "email": "john@example.com",       // String, valid email format
+  "password": "secretPassword123"    // String, min 6 chars
 }
 ```
 </details>
@@ -267,8 +236,18 @@ stateDiagram-v2
     "user": {
       "_id": "648a123abc456def78901234",
       "username": "John Doe",
+      "phoneNumber": "9876543210",
       "email": "john@example.com",
-      "role": "user"
+      "role": "user",
+      "vehicles": [
+        {
+          "vehicleNo": "MH12AB1234",
+          "type": "4wheeler"
+        }
+      ],
+      "createdAt": "2026-06-09T08:00:00.000Z",
+      "updatedAt": "2026-06-09T08:00:00.000Z",
+      "__v": 0
     },
     "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
   }
@@ -279,7 +258,7 @@ stateDiagram-v2
 ---
 
 ### Station Endpoints (`/station`)
-*All requests require header: `Authorization: Bearer <JWT_TOKEN>`*
+*All requests require the header: `Authorization: Bearer <JWT_TOKEN>`*
 
 #### Create Charging Station
 * **Endpoint**: `POST /station`
@@ -287,21 +266,21 @@ stateDiagram-v2
 * **Request Headers**: `Content-Type: application/json`
 
 <details>
-<summary><b>View Request Body Template</b></summary>
+<summary><b>View Request Body Schema</b></summary>
 
 ```json
 {
-  "name": "Evolts Supercharge Hub",
-  "address": "Baner Main Road, Pune",
-  "location": {
-    "type": "Point",
-    "coordinates": [73.7934, 18.5596]
+  "name": "Evolts Supercharge Hub",     // String, min 3 characters
+  "address": "Baner Main Road, Pune",   // String, min 5 characters
+  "location": {                         // Object
+    "type": "Point",                    // String, must be "Point"
+    "coordinates": [73.7934, 18.5596]   // Array of two numbers [longitude, latitude]
   },
-  "status": "online",
-  "pricing": 20,
-  "chargerTypes": {
-    "charger": "superFast",
-    "powerOut": "180kW"
+  "status": "online",                   // String, "online" | "offline"
+  "pricing": 20,                        // Number, min price 1
+  "chargerTypes": {                     // Object
+    "charger": "superFast",             // String, "slow" | "fast" | "superFast"
+    "powerOut": "180kW"                 // String (Optional)
   }
 }
 ```
@@ -316,7 +295,7 @@ stateDiagram-v2
   "message": "station created successfully",
   "data": {
     "_id": "648a5678ab123cde45678901",
-    "name": "evolts supercharge hub",
+    "name": "evolts supercharge hub",   // Lowercased automatically in MongoDB
     "address": "Baner Main Road, Pune",
     "location": {
       "type": "Point",
@@ -327,7 +306,8 @@ stateDiagram-v2
     "chargerTypes": {
       "charger": "superFast",
       "powerOut": "180kW"
-    }
+    },
+    "__v": 0
   }
 }
 ```
@@ -337,10 +317,11 @@ stateDiagram-v2
 * **Endpoint**: `GET /station`
 * **Access**: Authenticated Users / Admins
 * **Query Parameters**:
-  - `name` (String, Optional) - Prefix search (case-insensitive)
+  - `name` (String, Optional) - Case-insensitive regex prefix search
   - `status` (`online` | `offline`, Optional)
   - `chargeType` (`slow` | `fast` | `superFast`, Optional)
-  - `minPrice` / `maxPrice` (Number, Optional)
+  - `minPrice` (Number, Optional, coerced, min 0)
+  - `maxPrice` (Number, Optional, coerced, min 0)
   - `page` (Number, Optional, Default: `1`)
   - `limit` (Number, Optional, Default: `10`)
 
@@ -369,9 +350,42 @@ stateDiagram-v2
         "chargerTypes": {
           "charger": "superFast",
           "powerOut": "180kW"
-        }
+        },
+        "__v": 0
       }
     ]
+  }
+}
+```
+</details>
+
+#### Get Single Charging Station Details
+* **Endpoint**: `GET /station/:stationId`
+* **Access**: Authenticated Users / Admins
+* **URL Params**: `stationId` (MongoDB ObjectId)
+
+<details>
+<summary><b>View Success Response (200 OK)</b></summary>
+
+```json
+{
+  "success": true,
+  "message": "Station: evolts supercharge hub",
+  "data": {
+    "_id": "648a5678ab123cde45678901",
+    "name": "evolts supercharge hub",
+    "address": "Baner Main Road, Pune",
+    "location": {
+      "type": "Point",
+      "coordinates": [73.7934, 18.5596]
+    },
+    "status": "online",
+    "pricing": 20,
+    "chargerTypes": {
+      "charger": "superFast",
+      "powerOut": "180kW"
+    },
+    "__v": 0
   }
 }
 ```
@@ -384,6 +398,18 @@ stateDiagram-v2
 * **URL Params**: `stationId` (MongoDB ObjectId)
 
 <details>
+<summary><b>View Request Body Schema (Partial Update)</b></summary>
+
+```json
+{
+  "status": "offline",
+  "pricing": 25
+}
+```
+*At least one field whitelisted in the service (`name`, `address`, `location`, `status`, `pricing`, `chargerTypes`) must be present.*
+</details>
+
+<details>
 <summary><b>View Success Response (200 OK)</b></summary>
 
 ```json
@@ -393,7 +419,18 @@ stateDiagram-v2
   "data": {
     "_id": "648a5678ab123cde45678901",
     "name": "evolts supercharge hub",
-    "status": "offline"
+    "address": "Baner Main Road, Pune",
+    "location": {
+      "type": "Point",
+      "coordinates": [73.7934, 18.5596]
+    },
+    "status": "offline",
+    "pricing": 25,
+    "chargerTypes": {
+      "charger": "superFast",
+      "powerOut": "180kW"
+    },
+    "__v": 0
   }
 }
 ```
@@ -412,7 +449,20 @@ stateDiagram-v2
   "success": true,
   "message": "Station Deleted Successfully",
   "data": {
-    "_id": "648a5678ab123cde45678901"
+    "_id": "648a5678ab123cde45678901",
+    "name": "evolts supercharge hub",
+    "address": "Baner Main Road, Pune",
+    "location": {
+      "type": "Point",
+      "coordinates": [73.7934, 18.5596]
+    },
+    "status": "offline",
+    "pricing": 20,
+    "chargerTypes": {
+      "charger": "superFast",
+      "powerOut": "180kW"
+    },
+    "__v": 0
   }
 }
 ```
@@ -421,7 +471,7 @@ stateDiagram-v2
 ---
 
 ### Booking Endpoints (`/booking`)
-*All requests require header: `Authorization: Bearer <JWT_TOKEN>`*
+*All requests require the header: `Authorization: Bearer <JWT_TOKEN>`*
 
 #### Reserve a Slot
 * **Endpoint**: `POST /booking`
@@ -429,16 +479,16 @@ stateDiagram-v2
 * **Request Headers**: `Content-Type: application/json`
 
 <details>
-<summary><b>View Request Body Template</b></summary>
+<summary><b>View Request Body Schema</b></summary>
 
 ```json
 {
-  "stationId": "648a5678ab123cde45678901",
-  "date": "2026-06-10",
-  "startTime": "14:00",
-  "endTime": "15:00",
-  "price": 20,
-  "status": "booked"
+  "stationId": "648a5678ab123cde45678901",         // String, valid MongoDB ObjectId
+  "date": "2026-06-10",                           // String, regex YYYY-MM-DD
+  "startTime": "14:00",                           // String, regex HH:mm
+  "endTime": "15:00",                             // String, regex HH:mm
+  "price": 20,                                    // Number, min 0
+  "status": "booked"                              // String, "booked" | "arrived" | "charging" | "completed" | "cancelled"
 }
 ```
 </details>
@@ -452,15 +502,16 @@ stateDiagram-v2
   "message": "Booking created Successfully",
   "data": {
     "_id": "648a9999ab123cde45678902",
-    "userId": "648a123abc456def78901234",
+    "userId": "648a123abc456def78901234",          // Extracted from JWT Claims
     "stationId": "648a5678ab123cde45678901",
-    "startTime": "2026-06-10T14:00:00.000Z",
-    "endTime": "2026-06-10T15:00:00.000Z",
+    "startTime": "2026-06-10T14:00:00.000Z",       // Converted to ISO UTC Date
+    "endTime": "2026-06-10T15:00:00.000Z",         // Converted to ISO UTC Date
     "price": 20,
-    "bookingDate": "2026-06-09T08:15:30.000Z",
+    "bookingDate": "2026-06-09T08:15:30.000Z",     // Timestamp of creation
     "status": "booked",
     "createdAt": "2026-06-09T08:15:30.000Z",
-    "updatedAt": "2026-06-09T08:15:30.000Z"
+    "updatedAt": "2026-06-09T08:15:30.000Z",
+    "__v": 0
   }
 }
 ```
@@ -472,12 +523,12 @@ stateDiagram-v2
 * **Request Headers**: `Content-Type: application/json`
 
 <details>
-<summary><b>View Request Body Template</b></summary>
+<summary><b>View Request Body Schema</b></summary>
 
 ```json
 {
-  "stationId": "648a5678ab123cde45678901",
-  "date": "2026-06-10"
+  "stationId": "648a5678ab123cde45678901",         // String, valid MongoDB ObjectId
+  "date": "2026-06-10"                            // String, regex YYYY-MM-DD
 }
 ```
 </details>
@@ -527,15 +578,71 @@ stateDiagram-v2
 * **Access**: Authenticated Users / Admins
 * **Query Parameters**:
   - `stationId` (String, Optional)
-  - `userId` (String, Optional)
+  - `userId` (String, Optional) - Checked for admin role; non-admins are forced to their own JWT claims ID.
   - `status` (`booked` | `arrived` | `charging` | `completed` | `cancelled`, Optional)
   - `page` (Number, Default: `1`)
   - `limit` (Number, Default: `10`)
-* **Behavior**: Admins receive all bookings matching the filters. Standard users are strictly hard-scoped to their own `userId` records.
 
-#### Fetch Single Booking
+<details>
+<summary><b>View Success Response (200 OK)</b></summary>
+
+```json
+{
+  "success": true,
+  "message": "All Bookings List",
+  "data": {
+    "page": 1,
+    "limit": 10,
+    "totalItems": 1,
+    "totalPages": 1,
+    "bookings": [
+      {
+        "_id": "648a9999ab123cde45678902",
+        "userId": "648a123abc456def78901234",
+        "stationId": "648a5678ab123cde45678901",
+        "startTime": "2026-06-10T14:00:00.000Z",
+        "endTime": "2026-06-10T15:00:00.000Z",
+        "price": 20,
+        "bookingDate": "2026-06-09T08:15:30.000Z",
+        "status": "booked",
+        "createdAt": "2026-06-09T08:15:30.000Z",
+        "updatedAt": "2026-06-09T08:15:30.000Z",
+        "__v": 0
+      }
+    ]
+  }
+}
+```
+</details>
+
+#### Fetch Single Booking Details
 * **Endpoint**: `GET /booking/:bookingId`
 * **Access**: Owner User or Admin
+* **URL Params**: `bookingId` (MongoDB ObjectId)
+
+<details>
+<summary><b>View Success Response (200 OK)</b></summary>
+
+```json
+{
+  "success": true,
+  "message": "Booking Id: 648a9999ab123cde45678902",
+  "data": {
+    "_id": "648a9999ab123cde45678902",
+    "userId": "648a123abc456def78901234",
+    "stationId": "648a5678ab123cde45678901",
+    "startTime": "2026-06-10T14:00:00.000Z",
+    "endTime": "2026-06-10T15:00:00.000Z",
+    "price": 20,
+    "bookingDate": "2026-06-09T08:15:30.000Z",
+    "status": "booked",
+    "createdAt": "2026-06-09T08:15:30.000Z",
+    "updatedAt": "2026-06-09T08:15:30.000Z",
+    "__v": 0
+  }
+}
+```
+</details>
 
 #### Patch Booking Status
 * **Endpoint**: `PATCH /booking/:bookingId`
@@ -543,6 +650,30 @@ stateDiagram-v2
 * **Query Parameters**:
   - `status` (Required, e.g. `?status=arrived`)
 * **Transition Checks**: Enforces the State Machine rules before committing changes to MongoDB.
+
+<details>
+<summary><b>View Success Response (200 OK)</b></summary>
+
+```json
+{
+  "success": true,
+  "message": "Booking Updated Successfully",
+  "data": {
+    "_id": "648a9999ab123cde45678902",
+    "userId": "648a123abc456def78901234",
+    "stationId": "648a5678ab123cde45678901",
+    "startTime": "2026-06-10T14:00:00.000Z",
+    "endTime": "2026-06-10T15:00:00.000Z",
+    "price": 20,
+    "bookingDate": "2026-06-09T08:15:30.000Z",
+    "status": "arrived",
+    "createdAt": "2026-06-09T08:15:30.000Z",
+    "updatedAt": "2026-06-09T14:05:00.000Z",
+    "__v": 0
+  }
+}
+```
+</details>
 
 ---
 

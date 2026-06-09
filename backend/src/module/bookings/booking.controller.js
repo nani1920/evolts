@@ -77,7 +77,7 @@ const updateBookingStatusById = async (req, res) => {
     );
     sendResponse(res, 200, "Booking Updated Successfully", booking);
   } catch (error) {
-    sendResponse(
+    sendErrorResponse(
       res,
       error.statusCode || 500,
       error.message || "Internal Server Error",
