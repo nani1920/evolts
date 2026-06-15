@@ -1,5 +1,6 @@
 /** @format */
 const { createError } = require("../../utils/createError");
+const _ = require("lodash");
 const mongoose = require("mongoose");
 const {
   createBooking,
@@ -7,18 +8,183 @@ const {
   getAllSlots,
   getBookingById,
   getAllBookings,
-  updateBookingStatusById,
+  updateBookingById,
   getBookingsByUserId,
 } = require("./booking.repository");
+const {
+  createChargingSession,
+  findChargingSession,
+} = require("../chargingSession/chargingSession.repository");
 
-const { checkCanUpdateStatus } = require("../../utils/helpers");
+const {
+  checkCanUpdateStatus,
+  generateOTP,
+  generateStartAndEndTime,
+} = require("../../utils/helpers");
 
 const { findStationById } = require("../stations/station.repository");
 const { findUserById } = require("../users/user.repository");
+const { findChargerById } = require("../chargers/chargers.repository");
 
+const validateBookingTime = (date, start, end, station) => {
+  const { startTime, endTime } = generateStartAndEndTime(date, start, end);
+  if (startTime < new Date()) {
+    throw createError(400, "Booking Time cannot be in past");
+  }
+
+  const { startTime: stationOpenTime, endTime: stationCloseTime } =
+    generateStartAndEndTime(date, station.openTime, station.closeTime);
+
+  if (startTime < stationOpenTime || endTime > stationCloseTime) {
+    throw createError(400, "booking timings are out of station hours");
+  }
+  if (startTime > endTime) {
+    throw createError(400, "startTime must be less than endTime");
+  }
+  // console.log(endTime.getHours() - startTime.getHours());
+  const diff = (endTime - startTime) / (1000 * 60 * 60); // 1000=>ms, 60=>seconds,60=>hours
+  if (diff !== 1) {
+    throw createError(400, "The slot time gap should be 1hr only");
+  }
+
+  return { startTime, endTime };
+};
+const resolveUserId = (user, body) => {
+  if (user.role !== "admin" && user.role !== "station_owner") {
+    return user.id;
+  } else {
+    if (!body.userId) {
+      throw createError(400, "Invalid userId, plz provide userId in req");
+    }
+    return new mongoose.Types.ObjectId(body.userId);
+  }
+};
+const validateHasBookingAuthority = (booking, user) => {
+  const isUsersBooking = booking.userId.toString() === user.id.toString();
+  const hasHighAuthority =
+    user.role === "admin" || user.role === "station_owner";
+  if (!isUsersBooking && !hasHighAuthority) {
+    throw createError(
+      403,
+      "Access restricted: you can check only your bookings.",
+    );
+  }
+};
+const getBookingFilters = (options, user) => {
+  let filters = {};
+  let timings;
+  if (options.date) {
+    timings = generateStartAndEndTime(
+      options.date,
+      options.startTime,
+      options.endTime,
+    );
+  }
+
+  const match = {
+    ...(options.id && { _id: options.id }),
+    ...(options.stationId && {
+      stationId: new mongoose.Types.ObjectId(options.stationId),
+    }),
+    ...(options.status && { status: options.status }),
+    ...(user.role === "user" && { userId: resolveUserId(user, options) }),
+    ...(options.isVerified &&
+      user.role !== "user" && { isVerified: options.isVerified === "true" }),
+    ...(options.date && {
+      startTime: { $gte: timings.startTime },
+      endTime: { $lte: timings.endTime },
+    }),
+  };
+  const lookup = [
+    {
+      from: "users",
+      let: { userId: "$userId" },
+      pipeline: [
+        {
+          $match: {
+            $expr: {
+              $eq: ["$_id", "$$userId"],
+            },
+          },
+        },
+        {
+          $project: { _id: 1, username: 1, phoneNumber: 1 },
+        },
+      ],
+      as: "user",
+    },
+    {
+      from: "chargers",
+      let: { chargerId: "$chargerId" },
+      pipeline: [
+        {
+          $match: {
+            $expr: {
+              $eq: ["$_id", "$$chargerId"],
+            },
+          },
+        },
+        {
+          $project: {
+            _id: 1,
+            chargerNo: 1,
+            connectorType: 1,
+            powerKw: 1,
+            pricingPerKwh: 1,
+          },
+        },
+      ],
+      as: "charger",
+    },
+    {
+      from: "stations",
+      let: { stationId: "$stationId" },
+      pipeline: [
+        {
+          $match: {
+            $expr: {
+              $eq: ["$_id", "$$stationId"],
+            },
+          },
+        },
+        {
+          $project: {
+            _id: 1,
+            name: 1,
+            address: 1,
+            location: 1,
+            pricing: 1,
+          },
+        },
+      ],
+      as: "station",
+    },
+  ];
+  const project = {
+    chargerId: 0,
+    stationId: 0,
+    userId: 0,
+    otp: 0,
+    __v: 0,
+  };
+  const addFields = {
+    user: { $arrayElemAt: ["$user", 0] },
+    charger: { $arrayElemAt: ["$charger", 0] },
+    station: { $arrayElemAt: ["$station", 0] },
+  };
+  filters["match"] = match;
+  filters["lookup"] = lookup;
+  filters["project"] = project;
+  filters["addFields"] = addFields;
+
+  return filters;
+};
+
+//Service Routes
 const createBookingService = async (body, user) => {
   const {
     stationId,
+    chargerId,
     date,
     startTime: start,
     endTime: end,
@@ -27,49 +193,47 @@ const createBookingService = async (body, user) => {
     status,
   } = body;
 
-  //Update Later
-  // const user = await findUserById(userId);
-  // if (!user) {
-  //   throw createError(404, "user Not found");
-  // }
+  const userId = resolveUserId(user, body);
 
+  const userExist = await findUserById(userId);
+  if (!userExist) {
+    throw createError(404, "user Not found");
+  }
   const station = await findStationById(stationId);
   if (!station) {
     throw createError(404, "Station Not Found");
   }
-
-  const startTime = new Date(`${date}T${start}:00.000Z`);
-  const endTime = new Date(`${date}T${end}:00.000Z`);
-
-  if (startTime > endTime) {
-    throw createError(400, "startTime must be less than endTime");
+  const charger = await findChargerById(chargerId);
+  if (!charger) {
+    throw createError(404, "charger Not Found");
   }
-  // console.log(endTime.getHours() - startTime.getHours());
-  if (!(endTime.getHours() - startTime.getHours() == 1)) {
-    throw createError(400, "The slot time gap should be 1hr only");
+  if (charger.stationId.toString() !== station._id.toString()) {
+    throw createError(400, "charger doesn't belongs to this station");
   }
+
+  const { startTime, endTime } = validateBookingTime(date, start, end, station);
 
   const bookingConflict = await getBookingByStartAndEndTime(
-    new mongoose.Types.ObjectId(stationId),
+    charger._id,
     startTime,
     endTime,
   );
 
   if (bookingConflict) {
-    throw createError(209, "Booking already Exists at this slot Time");
+    throw createError(409, "Booking already Exists at this slot Time");
   }
 
   const updatedBody = {
-    userId: user.id,
-    stationId,
+    userId: userExist._id,
+    stationId: station._id,
+    chargerId: charger._id,
     startTime: new Date(startTime),
     endTime: new Date(endTime),
-    price,
-    bookingDate: new Date(),
-    status: status,
   };
 
-  const booking = await createBooking(updatedBody);
+  let booking = await createBooking(updatedBody);
+
+  booking = _.omit(booking.toObject(), ["otp", "isVerified"]);
   return booking;
 };
 
@@ -77,29 +241,7 @@ const getAllBookingsService = async (options, user) => {
   const page = Number(options.page) || 1;
   const limit = Number(options.limit) || 10;
 
-  const filters = {
-    ...(options.id && { _id: options.id }),
-    ...(options.stationId && { stationId: options.stationId }),
-    ...(options.status && { status: options.status }),
-    ...(user.role !== "admin" && {
-      userId: new mongoose.Types.ObjectId(user.id),
-    }),
-  };
-
-  // if (options.id) {
-  //   filters._id = options.id;
-  // }
-  // if (options.stationId) {
-  //   filters.stationId = options.stationId;
-  // }
-  // if (options.userId) {
-  //   filters.userId = options.userId;
-  // }
-  // if (options.status) {
-  //   filters.status = options.status;
-  // }
-
-  console.log(filters);
+  const filters = getBookingFilters(options, user);
 
   const { totalPages, totalItems, bookings } = await getAllBookings(
     filters,
@@ -110,23 +252,40 @@ const getAllBookingsService = async (options, user) => {
   // if (!bookings || bookings.length === 0) {
   //   throw createError(404, "Bookings Not Found");
   // }
-  return { page, limit, totalItems, totalPages, bookings };
+  return {
+    page,
+    limit,
+    totalItems,
+    totalPages,
+    bookings: bookings.length > 0 ? bookings : "bookings not found",
+  };
 };
 
 const getBookingByIdService = async (bookingId, user) => {
-  const booking = await getBookingById(bookingId);
+  const populate = [
+    {
+      path: "chargerId",
+      select: "_id chargerNo connectorType status powerKw pricingPerKwh",
+    },
+    {
+      path: "stationId",
+      select: "-ownerId -__v",
+    },
+    {
+      path: "userId",
+      select: "_id username phoneNumber email",
+    },
+  ];
 
-  const isOwner = booking.userId.toString() === user.id.toString();
-  const isAdmin = user.role === "admin";
-  if (!isOwner && !isAdmin) {
-    throw createError(
-      400,
-      "Access restricted: you can check only your bookings.",
-    );
-  }
+  let booking = await getBookingById(bookingId, populate);
+  validateHasBookingAuthority(booking, user);
 
   if (!booking || booking.length === 0) {
     throw createError(404, "Booking Not Found");
+  }
+  // booking = _.omit(booking.toObject(), ["isVerified"]);
+  if (booking.status === "booked") {
+    booking = _.omit(booking, ["otp", "isVerified"]);
   }
   return booking;
 };
@@ -137,14 +296,7 @@ const updateBookingStatusIdService = async (bookingId, status, user) => {
     throw createError(404, "Booking Not Found");
   }
 
-  const isOwner = bookingExist.userId.toString() === user.id.toString();
-  const isAdmin = user.role === "admin";
-  if (!isOwner && !isAdmin) {
-    throw createError(
-      400,
-      "Access restricted: you can update only your bookings.",
-    );
-  }
+  validateHasBookingAuthority(bookingExist, user);
 
   if (bookingExist.status === status) {
     throw createError(400, `Booking is already in '${status}' status`);
@@ -157,39 +309,79 @@ const updateBookingStatusIdService = async (bookingId, status, user) => {
     );
   }
 
-  const booking = await updateBookingStatusById(bookingExist._id, status);
+  const otp = generateOTP();
+
+  const booking = await updateBookingById(bookingExist._id, { status, otp });
   return booking;
 };
 
-const getAvailableSlotsService = async (date, stationId) => {
-  const station = await findStationById(stationId);
-  if (!station) {
-    throw createError(404, "Station Not Found");
+// const getAvailableSlotsService = async (date, stationId) => {
+//   const station = await findStationById(stationId);
+//   if (!station) {
+//     throw createError(404, "Station Not Found");
+//   }
+//   const startTime = new Date(date);
+//   startTime.setHours(0, 0, 0, 0);
+//   const endTime = new Date(date);
+//   endTime.setHours(24, 59, 59, 999);
+//   const bookings = await getAllSlots(stationId, startTime, endTime);
+//   const bookedHours = bookings.map((booking) =>
+//     new Date(booking.startTime).getUTCHours(),
+//   );
+
+//   const availableSlots = [];
+//   for (let hour = 0; hour < 24; hour++) {
+//     if (bookedHours.includes(hour)) continue;
+
+//     availableSlots.push({
+//       startTime: `${String(hour).padStart(2, "0")}:00`,
+//       endTime: `${String(hour + 1).padStart(2, "0")}:00`,
+//     });
+//   }
+
+//   return { total: availableSlots.length, availableSlots };
+// };
+
+const verifyBookingOtpService = async (data, bookingId) => {
+  const { otp } = data;
+  const booking = await getBookingById(bookingId);
+  if (!booking) {
+    throw createError(404, "Booking Not Found");
   }
-  const startTime = new Date(date);
-  startTime.setHours(0, 0, 0, 0);
-  const endTime = new Date(date);
-  endTime.setHours(24, 59, 59, 999);
-  const bookings = await getAllSlots(stationId, startTime, endTime);
-  const bookedHours = bookings.map((booking) =>
-    new Date(booking.startTime).getUTCHours(),
-  );
 
-  const availableSlots = [];
-  for (let hour = 0; hour < 24; hour++) {
-    if (bookedHours.includes(hour)) continue;
+  if (booking.status === "booked") {
+    throw createError(400, "user must arrive the station");
+  }
 
-    availableSlots.push({
-      startTime: `${String(hour).padStart(2, "0")}:00`,
-      endTime: `${String(hour + 1).padStart(2, "0")}:00`,
+  const [sessionExists] = await findChargingSession({
+    bookingId: booking._id,
+  });
+
+  if (booking.isVerified && sessionExists) {
+    throw createError(400, "booking already verified");
+  }
+
+  if (otp !== booking.otp) {
+    throw createError(400, "please enter correct otp");
+  }
+
+  let updatedBooking = await updateBookingById(booking._id, {
+    isVerified: true,
+  });
+
+  if (!sessionExists || sessionExists.length === 0) {
+    await createChargingSession({
+      bookingId: updatedBooking._id,
+      chargerId: updatedBooking.chargerId,
     });
   }
 
-  return { total: availableSlots.length, availableSlots };
+  updatedBooking = _.omit(updatedBooking.toObject(), ["otp"]);
+  return updatedBooking;
 };
 
 //need to remove below functions
-const cancelBookingByIdService = async () => { };
+const cancelBookingByIdService = async () => {};
 
 // const getBookingsByStationIdService = async (params) => {
 //   const { stationId } = params;
@@ -230,7 +422,8 @@ module.exports = {
   getBookingByIdService,
   cancelBookingByIdService,
   updateBookingStatusIdService,
-  getAvailableSlotsService,
+  verifyBookingOtpService,
+  // getAvailableSlotsService,
   // getBookingsByStationIdService,
   // getBookingsByUserIdService,
 };

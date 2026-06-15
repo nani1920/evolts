@@ -1,9 +1,16 @@
 /** @format */
-
+const mongoose = require("mongoose");
 const { z } = require("zod");
+
+const isMongoId = (id) => {
+  return mongoose.Types.ObjectId.isValid(id);
+};
 
 const createStationRequest = z
   .object({
+    ownerId: z.refine((id) => isMongoId(id), {
+      message: "Invalid ownerId",
+    }),
     name: z.string().trim().min(3, "atleast 3 characters Required"),
     address: z.string().trim().min(5, "Please Enter Valid Address"),
     location: z.object({
@@ -14,9 +21,11 @@ const createStationRequest = z
     }),
     status: z.enum(["offline", "online"]),
     pricing: z.number().min(1, "Please Enter Price More than 0"),
-    chargerTypes: z.object({
-      charger: z.enum(["slow", "fast", "superFast"]),
-      powerOut: z.string().optional(),
+    openTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, {
+      message: "Invalid startTime format (HH:mm required)",
+    }),
+    closeTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, {
+      message: "Invalid startTime format (HH:mm required)",
     }),
   })
   .strict();
@@ -32,9 +41,12 @@ const updateStationRequest = createStationRequest.partial().refine(
 
 const getAllStationsRequest = z
   .object({
+    ownerId: z
+      .string()
+      .refine((id) => isMongoId(id), { message: "Invalid ownerId" })
+      .optional(),
     name: z.string().optional(),
     status: z.enum(["offline", "online"]).optional(),
-    chargeType: z.enum(["slow", "fast", "superFast"]).optional(),
     minPrice: z.coerce
       .number()
       .min(0, "minPrice must be greater than 0")

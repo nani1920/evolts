@@ -14,20 +14,17 @@ const validateToken = (token) => {
 };
 
 const checkCanUpdateStatus = (currentStatus, newStatus, role) => {
-  //  ["booked", "arrived", "charging", "completed", "cancelled"],
-  // const allowTransactions = {
-  //   booked: ["arrived", "cancelled"],
-  //   arrived: ["charging", "cancelled"],
-  //   charging: ["completed", "cancelled"],
-  //   completed: [],
-  //   cancelled: [],
-  // };
-  // return allowTransactions[currentStatus]?.includes(newStatus);
-
   const allowedTransactions = {
     user: {
       booked: ["arrived", "cancelled"],
       arrived: ["charging", "cancelled"],
+      charging: ["completed", "cancelled"],
+      completed: [],
+      cancelled: [],
+    },
+    station_owner: {
+      booked: ["arrived", "charging", "completed", "cancelled"],
+      arrived: ["charging", "completed", "cancelled"],
       charging: ["completed", "cancelled"],
       completed: [],
       cancelled: [],
@@ -47,8 +44,38 @@ const checkCanUpdateStatus = (currentStatus, newStatus, role) => {
   return roleRules[currentStatus]?.includes(newStatus);
 };
 
+const generateOTP = () => {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+};
+
+const generateStartAndEndTime = (date, start, end) => {
+  const [year, month, day] = date.split("-").map(Number);
+  const [startHr, startMm] = start.split(":").map(Number);
+  const [endHr, endMm] = end.split(":").map(Number);
+  console.log(year, month, day);
+  console.log(startHr, startMm);
+  console.log(endHr, endMm);
+  // const startTime = new Date(
+  //   Date.UTC(year, month - 1, day, startHr, startMm, 0),
+  // );
+  // const endTime = new Date(Date.UTC(year, month - 1, day, endHr, endMm, 0));
+  const startTime = new Date(`${date}T${start}:00+05:30`);
+  const endTime = new Date(`${date}T${end}:00+05:30`);
+  return { startTime, endTime };
+};
+
+const formatTimeIST = (date) =>
+  new Date(date).toLocaleTimeString("en-IN", {
+    timeZone: "Asia/Kolkata",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
 module.exports = {
   generateToken,
   validateToken,
   checkCanUpdateStatus,
+  generateOTP,
+  generateStartAndEndTime,
+  formatTimeIST,
 };

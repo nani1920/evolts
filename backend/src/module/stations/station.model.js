@@ -2,6 +2,11 @@
 
 const mongoose = require("mongoose");
 const stationSchema = new mongoose.Schema({
+  ownerId: {
+    type: mongoose.Types.ObjectId,
+    ref: "user",
+    required: true,
+  },
   name: {
     type: String,
     trim: true,
@@ -34,15 +39,13 @@ const stationSchema = new mongoose.Schema({
   pricing: {
     type: Number,
   },
-  chargerTypes: {
-    charger: {
-      type: String,
-      enum: ["slow", "fast", "superFast"],
-      required: true,
-    },
-    powerOut: {
-      type: String,
-    },
+  openTime: {
+    type: String,
+    required: true,
+  },
+  closeTime: {
+    type: String,
+    required: true,
   },
 });
 

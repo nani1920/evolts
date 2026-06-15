@@ -24,6 +24,14 @@ const isAuthenticated = (req, res, next) => {
   }
 };
 
+const authorizeRole = (...allowedRoles) => {
+  return (req, res, next) => {
+    if (!allowedRoles.includes(req.user.role)) {
+      return sendErrorResponse(res, 403, "Access Denied");
+    }
+    next();
+  };
+};
 const isAdmin = (req, res, next) => {
   if (req.user.role !== "admin") {
     return sendErrorResponse(res, 403, "Access Denied");
@@ -31,4 +39,4 @@ const isAdmin = (req, res, next) => {
   next();
 };
 
-module.exports = { isAdmin, isAuthenticated };
+module.exports = { isAdmin, isAuthenticated, authorizeRole };

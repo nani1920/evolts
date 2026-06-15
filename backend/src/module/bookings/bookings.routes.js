@@ -8,6 +8,7 @@ const {
   getBookingById,
   updateBookingStatusById,
   getAllBookings,
+  verifyBookingOtp,
   // getAllBookingsByStationId,
   // getAllBookingsByUserId,
 } = require("./booking.controller");
@@ -17,6 +18,7 @@ const {
   getAllBookingsQuery,
   getBookingByIdParams,
   updateBookingStatusQuery,
+  verifyOtpRequest,
 } = require("./booking.request");
 const {
   validate,
@@ -27,19 +29,27 @@ const {
 const {
   isAdmin,
   isAuthenticated,
+  authorizeRole,
 } = require("../../middlewares/auth.middleware");
 
 router.use(isAuthenticated);
 
 router.post("/", validate(createBookingRequest), createBooking);
-router.get("/slots", validate(getAvailableSlotsRequest), getAvailableSlots);
-router.get("/", validateQuery(getAllBookingsQuery), getAllBookings);
 router.get("/:bookingId", validateParams(getBookingByIdParams), getBookingById);
+router.post("/slots", validate(getAvailableSlotsRequest), getAvailableSlots);
+router.get("/", validateQuery(getAllBookingsQuery), getAllBookings);
 router.patch(
   "/:bookingId",
   validateParams(getBookingByIdParams),
   validateQuery(updateBookingStatusQuery),
   updateBookingStatusById,
+);
+
+router.post(
+  "/:bookingId/verify-otp",
+  authorizeRole("admin", "station_owner"),
+  validate(verifyOtpRequest),
+  verifyBookingOtp,
 );
 
 // router.get("/station/:stationId", getAllBookingsByStationId);

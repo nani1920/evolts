@@ -19,19 +19,25 @@ const {
 const {
   isAdmin,
   isAuthenticated,
+  authorizeRole,
 } = require("../../middlewares/auth.middleware");
 
 router.use(isAuthenticated);
 
-router.post("/", isAdmin, validate(createStationRequest), createStation);
+router.post(
+  "/",
+  authorizeRole("admin", "station_owner"),
+  validate(createStationRequest),
+  createStation,
+);
 router.get("/", validateQuery(getAllStationsRequest), getStations);
 router.get("/:stationId", getStation);
 router.put(
   "/:stationId",
-  isAdmin,
+  authorizeRole("admin", "station_owner"),
   validate(updateStationRequest),
   updateStation,
 );
-router.delete("/:stationId", isAdmin, deleteStation);
+router.delete("/:stationId", authorizeRole("admin"), deleteStation);
 
 module.exports = router;

@@ -1,710 +1,783 @@
-# ⚡ Evolts Backend API
+<!-- @format -->
 
-> An enterprise-grade, high-performance RESTful API powering the Evolts Electric Vehicle (EV) Charging Station Locator and Slot Booking platform.
+# ⚡ Evolts Backend Engine
 
-[![Node.js Version](https://img.shields.io/badge/node.js-%3E%3D18.0.0-green.svg?style=for-the-badge&logo=node.js)](https://nodejs.org/)
-[![Express.js Version](https://img.shields.io/badge/express.js-%5E5.2.1-lightgrey.svg?style=for-the-badge&logo=express)](https://expressjs.com/)
-[![MongoDB](https://img.shields.io/badge/MongoDB-%5E7.2.0-green.svg?style=for-the-badge&logo=mongodb)](https://www.mongodb.com/)
-[![JWT](https://img.shields.io/badge/JWT-Authentication-blue.svg?style=for-the-badge&logo=json-web-tokens)](https://jwt.io/)
-[![Zod](https://img.shields.io/badge/Zod-Validation-purple.svg?style=for-the-badge&logo=zod)](https://zod.dev/)
+An enterprise-grade, high-performance RESTful API powering **Evolts**—a smart Electric Vehicle (EV) Charging Station Locator and Reservation platform.
+
+This engine is built on **Node.js, Express, and MongoDB**, utilizing **Mongoose** for modeling, **Zod** for schema validation, and **JSON Web Tokens (JWT)** for role-based security.
 
 ---
 
 ## 📖 Table of Contents
-* [Architecture Overview](#-architecture-overview)
-* [Core Features](#core-features)
-* [Directory Structure](#-directory-structure)
-* [Database Model Schemas](#-database-model-schemas)
-  * [User Schema](#user-schema)
-  * [Station Schema](#station-schema)
-  * [Booking Schema](#booking-schema)
-* [Business Rules & Logic](#-business-rules--logic)
-  * [Booking Integrity Rules](#booking-integrity-rules)
-  * [State Machine Transitions](#state-machine-transitions)
-* [API Reference](#-api-reference)
-  * [Authentication Endpoints (`/auth`)](#authentication-endpoints-auth)
-  * [Station Endpoints (`/station`)](#station-endpoints-station)
-  * [Booking Endpoints (`/booking`)](#booking-endpoints-booking)
-* [Getting Started](#-getting-started)
-  * [Prerequisites](#prerequisites)
-  * [Environment Configuration](#environment-configuration)
-  * [Installation & Execution](#installation--execution)
+
+- [🎯 Core Features Showcase](#-core-features-showcase)
+- [🏗️ Architectural Blueprint](#%EF%B8%8F-architectural-blueprint)
+- [🗃️ Database Schema & Relational Design](#%EF%B8%8F-database-schema--relational-design)
+- [🚀 Advanced System Design & Optimizations](#-advanced-system-design--optimizations)
+  - [1. Geospatial Proximity Aggregation](#1-geospatial-proximity-aggregation)
+  - [2. Concurrency & Race-Condition Mitigation](#2-concurrency--race-condition-mitigation)
+  - [3. Timezone-Safe Slot Scheduling](#3-timezone-safe-slot-scheduling)
+  - [4. Database Optimization via Facet Pagination](#4-database-optimization-via-facet-pagination)
+  - [5. Granular Role-Based Access Control (RBAC)](#5-granular-role-based-access-control-rbac)
+  - [6. Dynamic Slot Generation Algorithm](#6-dynamic-slot-generation-algorithm)
+  - [7. Strict Booking State Machine](#7-strict-booking-state-machine)
+- [🔌 API Playbook](#-api-playbook)
+- [⚙️ Setup & Local Development](#%EF%B8%8F-setup--local-development)
 
 ---
 
-## 🏗️ Architecture Overview
+## 🎯 Core Features Showcase
 
-The Evolts API is designed using the **Layered Service-Repository Pattern**, enforcing clean separation of concerns, high testability, and scalability.
+The Evolts Backend Engine is built to deliver a seamless, secure, and reliable EV charging reservation experience. Here are the core features implemented in the system:
 
-### Request Lifecycle Flow
-1. **Client Request**: Initiates an HTTP request to the API.
-2. **Routing & Middleware**:
-   * **Authentication**: Verifies JWT signatures and user role claims.
-   * **Validation**: Sanitizes and validates request bodies, queries, and parameters via Zod.
-3. **Controller Layer**: Decoupled request handler, extracts payloads, and delegates tasks to the services.
-4. **Service Layer**: Contains core business logic, validation rules, and interacts with repositories.
-5. **Repository Layer**: Executes operations on the MongoDB database.
-6. **Response**: Controllers return standardized JSON responses.
+- **Secure Authentication & RBAC**: Dual-layered protection using password encryption (Bcrypt) and JWT-based authentication. The API enforces strict **Role-Based Access Control** for Drivers, Station Owners, and Administrators.
+- **Geospatial Proximity Search**: Utilizes MongoDB `2dsphere` indexing and spatial aggregation queries to locate nearby charging hubs within a dynamic radius of coordinates.
+- **Pre-Booked Hourly Reservations**: Enforces a strict 1-hour reservation window for individual chargers, preventing overlaps and conflicts at the database level.
+- **OTP Check-In Verification**: Bridges physical arrival at a charging station with digital activation by generating and verifying a 6-digit OTP code through the station owner portal.
+- **Automated Charging Session Tracker**: Automatically computes elapsed charging duration, energy consumed (in kWh) based on hardware capacity, and outputs detailed billing records upon ending a session.
+- **Robust Schema Validation**: Rejects malformed requests at the gateway router level using structured Zod schemas to ensure database integrity.
 
 ---
 
-## Core Features
+## 🏗️ Architectural Blueprint
 
-- Secure Authentication & Authorization using JWT and Role-Based Access Control (RBAC).
-- Geospatial Search for locating nearby EV charging stations.
-- Request Validation to ensure data integrity and prevent invalid inputs.
-- Slot Availability Management with booking conflict detection.
-- Booking State Machine to enforce valid lifecycle transitions.
-- Pagination and Filtering for efficient data retrieval.
-- Environment-Based Configuration for secure application settings.
-- Centralized Error Handling for consistent API responses.
+To achieve separation of concerns, high testability, and modularity, the API uses the **Layered Service-Repository Pattern**.
 
----
-
-## 📂 Directory Structure
-
-```text
-backend/
-├── src/
-│   ├── config/
-│   │   └── db.js                 # Database connection driver (Mongoose)
-│   ├── middlewares/
-│   │   ├── auth.middleware.js    # Authentication and role verification filters
-│   │   └── validate.js           # Generic Zod parsing middleware for req body/query/params
-│   ├── module/                   # Domain Modules
-│   │   ├── auth/                 # User credentials & tokens module
-│   │   ├── bookings/             # Booking slots management module
-│   │   ├── stations/             # Charging hubs & pricing module
-│   │   └── users/                # User profile and registered vehicle models
-│   └── utils/
-│       ├── createError.js        # Normalized error generation utility
-│       ├── helpers.js            # General utility helpers & transition check maps
-│       └── response.js           # Express response standardization helpers
-├── index.js                      # Application main entry point
-└── package.json                  # Dependencies, scripts and metadata
+```
+[Client Request]
+      │
+      ▼
+[Express Router] ──────► Runs JWT Auths & Role Checks (RBAC)
+      │
+      ▼
+[Validation Layer] ────► Sanitizes & coerces payloads via Zod Schemas
+      │
+      ▼
+[Controller Layer] ────► Extracts requests & delegates to Services
+      │
+      ▼
+[Service Layer] ───────► Executes Core Business Logic, Math, & Constraints
+      │
+      ▼
+[Repository Layer] ────► Abstracts DB interactions & Aggregation queries
+      │
+      ▼
+[MongoDB Mongoose]
 ```
 
----
+### Design Decisions
 
-## 🗄️ Database Model Schemas
-
-### User Schema
-| Field | Type | Required / Index | Description |
-| :--- | :--- | :---: | :--- |
-| `username` | `String` | Yes | Name of the user |
-| `phoneNumber`| `String` | Yes | 10-digit primary phone number |
-| `email` | `String` | Yes (Unique) | Electronic mail address (lowercased) |
-| `password` | `String` | Yes | Hashed password string |
-| `role` | `String` | Yes | `"user"` or `"admin"`. Defaults to `"user"` |
-| `vehicles` | `Array` | No | Nested subdocuments representing registered vehicles |
-
-### Station Schema
-| Field | Type | Required / Index | Description |
-| :--- | :--- | :---: | :--- |
-| `name` | `String` | Yes (Text Index) | Charging hub name (lowercased) |
-| `address` | `String` | Yes | Detailed physical address location |
-| `location` | `Object` | Yes (`2dsphere`) | GeoJSON Point with `coordinates: [longitude, latitude]` |
-| `status` | `String` | Yes | `"online"` or `"offline"`. Defaults to `"online"` |
-| `pricing` | `Number` | Yes | Hourly charging price |
-| `chargerTypes`| `Object` | Yes | Subdocument with `charger` type (`slow`/`fast`/`superFast`) and `powerOut` |
-
-### Booking Schema
-| Field | Type | Required / Index | Description |
-| :--- | :--- | :---: | :--- |
-| `userId` | `ObjectId` | Yes (Ref: User) | Associated booking customer |
-| `stationId` | `ObjectId` | Yes (Ref: Station) | Associated charging hub |
-| `startTime` | `Date` | Yes | Charging reservation start ISO Date-time |
-| `endTime` | `Date` | Yes | Charging reservation end ISO Date-time |
-| `price` | `Number` | Yes | Booking reservation price paid |
-| `bookingDate`| `Date` | Yes | Date when the booking transaction occurred |
-| `status` | `String` | Yes | Status enum: `booked`, `arrived`, `charging`, `completed`, `cancelled` |
+- **Service-Repository Separation**: Controllers are thin entry points. Services hold pure business rules. Repositories handle database drivers. This prevents DB changes from breaking business logic.
+- **Zod Gatekeeper**: Invalid payloads are rejected at the routing layer before triggering database operations, reducing overhead and improving security.
 
 ---
 
-## ⚙️ Business Rules & Logic
+## 🗄️ Database Schema & Relational Design
 
-### Booking Integrity Rules
-To guarantee database integrity and prevent double-booking:
-1. **Duration Restraint**: Charging slot reservations must be exactly **1 hour** (e.g. 14:00 to 15:00).
-2. **Order Check**: `startTime` must precede `endTime`.
-3. **Conflict Resolution**: Intersecting slots at the same station are rejected. The system checks:
-   $$\text{Start}_{\text{existing}} < \text{End}_{\text{new}} \quad \text{AND} \quad \text{End}_{\text{existing}} > \text{Start}_{\text{new}}$$
+Evolts utilizes a relational document model in MongoDB to track users, charging hubs, hardware specifications, reservations, and active invoices.
 
-### State Machine Transitions
-Booking updates follow a strict, role-based status lifecycle. Below are the allowed transitions for standard Users and Administrators:
+```mermaid
+erDiagram
+    User ||--o{ Station : manages
+    User ||--o{ Booking : reserves
+    Station ||--o{ Charger : houses
+    Booking }|--|| Charger : targets
+    Booking ||--o| ChargingSession : invoices
+    ChargingSession }|--|| Charger : utilizes
+```
 
-| Current Status | Allowed Next Status (User) | Allowed Next Status (Admin) | Transition Description |
-| :--- | :--- | :--- | :--- |
-| `booked` | `arrived`, `cancelled` | `arrived`, `charging`, `completed`, `cancelled` | Check-in or cancel reservation. Admins can directly start or complete it. |
-| `arrived` | `charging`, `cancelled` | `charging`, `completed`, `cancelled` | Connect vehicle plug to start charging, or cancel. Admins can directly complete it. |
-| `charging` | `completed`, `cancelled` | `completed`, `cancelled` | Complete the charging session, or perform an emergency cancellation. |
-| `completed` | *None* | *None* | Final state. No further transitions allowed. |
-| `cancelled` | *None* | *None* | Final state. No further transitions allowed. |
+### Model Schemas
 
-#### Lifecycle Rules
-* **Creation**: All reservations are initialized as `booked`.
-* **Standard Flow**: `booked` ➡️ `arrived` ➡️ `charging` ➡️ `completed`.
-* **Cancellations**: A session can be updated to `cancelled` by either the user or admin from any active state (`booked`, `arrived`, or `charging`).
-* **Admin Overrides**: Administrators can bypass intermediate states (e.g. going directly from `booked` to `charging` or `completed`).
+  <details>
+  <summary>📂 1. User Schema (Click to expand)</summary>
+
+- **Path:** [user.model.js](file:///c:/my-projects/Evolts/backend/src/module/users/user.model.js)
+- **Key Fields**:
+  - `username` / `phoneNumber` / `email` (Unique, Lowercase).
+  - `role`: Enum `["user", "station_owner", "admin"]`. Defaults to `"user"`.
+  - `vehicles`: Embedded subdocument array tracking registration plates and vehicle class (e.g. `2wheeler`, `4wheeler`).
+  </details>
+
+  <details>
+  <summary>📂 2. Station Schema (Click to expand)</summary>
+
+- **Path:** [station.model.js](file:///c:/my-projects/Evolts/backend/src/module/stations/station.model.js)
+- **Key Fields**:
+  - `ownerId`: ObjectId referencing the owner User.
+  - `name`: Lowercased string with text index for full-text search.
+  - `location`: GeoJSON Point containing `[longitude, latitude]`.
+  - `openTime` / `closeTime`: Operational hours constraints (Format: `HH:mm`).
+- **Indexes**: Indexed with a `2dsphere` index for coordinate queries.
+  </details>
+
+    <details>
+    <summary>📂 3. Charger Schema (Click to expand)</summary>
+
+- **Path:** [chargers.model.js](file:///c:/my-projects/Evolts/backend/src/module/chargers/chargers.model.js)
+- **Key Fields**:
+  - `stationId`: ObjectId referencing the host Station.
+  - `chargerNo`: Unique string identifier per station.
+  - `connectorType`: Enum `["CCS", "CHAdeMO", "NACS", "Type2"]`.
+  - `powerKw`: Hardware capacity (e.g. 50kW, 150kW).
+  - `pricingPerKwh`: Target billing rate.
+- **Indexes**: Compound unique index on `{ stationId: 1, chargerNo: 1 }` to guarantee unique charger codes per hub.
+  </details>
+
+    <details>
+    <summary>📂 4. Booking Schema (Click to expand)</summary>
+
+- **Path:** [booking.model.js](file:///c:/my-projects/Evolts/backend/src/module/bookings/booking.model.js)
+- **Key Fields**:
+  - `userId` / `stationId` / `chargerId` relations.
+  - `startTime` / `endTime` ISO UTC Date objects.
+  - `status`: Lifecycle states (`"booked"`, `"arrived"`, `"charging"`, `"completed"`, `"cancelled"`).
+  - `otp`: 6-digit random check-in code.
+  - `isVerified`: Boolean OTP confirmation flag.
+- **Indexes**: Compound unique index on `{ chargerId: 1, startTime: 1 }` to prevent database-level double-bookings.
+  </details>
+
+    <details>
+    <summary>📂 5. Charging Session Schema (Click to expand)</summary>
+
+- **Path:** [chargingSession.model.js](file:///c:/my-projects/Evolts/backend/src/module/chargingSession/chargingSession.model.js)
+- **Key Fields**:
+  - `bookingId`: Unique ObjectId referencing the Booking.
+  - `chargerId` relation.
+  - `startedAt` / `endedAt` timestamps.
+  - `energyConsumedKwh` / `pricePerKwh` / `total` invoice cost.
+  </details>
 
 ---
 
-## 🔌 API Reference
+## 🚀 Advanced System Design & Optimizations
 
-### Authentication Endpoints (`/auth`)
+### 1. Geospatial Proximity Aggregation
 
-#### Register a New User
-* **Endpoint**: `POST /auth/register`
-* **Access**: Public
-* **Request Headers**: `Content-Type: application/json`
+Locating nearby stations requires fast geospatial computation. The backend leverages MongoDB's native **Aggregation Pipelines**:
 
-<details>
-<summary><b>View Request Body Schema</b></summary>
-
-```json
-{
-  "username": "John Doe",           // String, min 3 chars
-  "phoneNumber": "9876543210",       // String, exact 10 digits
-  "email": "john@example.com",       // String, valid email format
-  "password": "secretPassword123",   // String, min 6 chars
-  "role": "user",                    // String, "user" | "admin" (Optional, default: "user")
-  "vehicles": [                      // Array of objects (Optional)
-    {
-      "vehicleNo": "MH12AB1234",     // String, exact 10 characters
-      "type": "4wheeler"             // String, "2wheeler" | "4wheeler"
-    }
-  ]
-}
-```
-*Note: Although an array of vehicles is validated, the registration logic only extracts and registers the first vehicle object (`vehicles[0]`) from the array.*
-</details>
-
-<details>
-<summary><b>View Success Response (201 Created)</b></summary>
-
-```json
-{
-  "success": true,
-  "message": "user created successfully",
-  "data": {
-    "user": {
-      "_id": "648a123abc456def78901234",
-      "username": "John Doe",
-      "phoneNumber": "9876543210",
-      "email": "john@example.com",
-      "role": "user",
-      "vehicles": [
-        {
-          "vehicleNo": "MH12AB1234",
-          "type": "4wheeler"
-        }
-      ],
-      "createdAt": "2026-06-09T08:00:00.000Z",
-      "updatedAt": "2026-06-09T08:00:00.000Z",
-      "__v": 0
-    },
-    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-  }
-}
-```
-</details>
-
-#### Log In User
-* **Endpoint**: `POST /auth/login`
-* **Access**: Public
-* **Request Headers**: `Content-Type: application/json`
-
-<details>
-<summary><b>View Request Body Schema</b></summary>
-
-```json
-{
-  "email": "john@example.com",       // String, valid email format
-  "password": "secretPassword123"    // String, min 6 chars
-}
-```
-</details>
-
-<details>
-<summary><b>View Success Response (200 OK)</b></summary>
-
-```json
-{
-  "success": true,
-  "message": "user loggedin successfully",
-  "data": {
-    "user": {
-      "_id": "648a123abc456def78901234",
-      "username": "John Doe",
-      "phoneNumber": "9876543210",
-      "email": "john@example.com",
-      "role": "user",
-      "vehicles": [
-        {
-          "vehicleNo": "MH12AB1234",
-          "type": "4wheeler"
-        }
-      ],
-      "createdAt": "2026-06-09T08:00:00.000Z",
-      "updatedAt": "2026-06-09T08:00:00.000Z",
-      "__v": 0
-    },
-    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-  }
-}
-```
-</details>
-
----
-
-### Station Endpoints (`/station`)
-*All requests require the header: `Authorization: Bearer <JWT_TOKEN>`*
-
-#### Create Charging Station
-* **Endpoint**: `POST /station`
-* **Access**: Admin Only
-* **Request Headers**: `Content-Type: application/json`
-
-<details>
-<summary><b>View Request Body Schema</b></summary>
-
-```json
-{
-  "name": "Evolts Supercharge Hub",     // String, min 3 characters
-  "address": "Baner Main Road, Pune",   // String, min 5 characters
-  "location": {                         // Object
-    "type": "Point",                    // String, must be "Point"
-    "coordinates": [73.7934, 18.5596]   // Array of two numbers [longitude, latitude]
+```javascript
+pipeline.push({
+  $geoNear: {
+    near: { type: "Point", coordinates: [lng, lat] },
+    maxDistance: radius,
+    distanceField: "distanceInMeters",
+    spherical: true,
   },
-  "status": "online",                   // String, "online" | "offline"
-  "pricing": 20,                        // Number, min price 1
-  "chargerTypes": {                     // Object
-    "charger": "superFast",             // String, "slow" | "fast" | "superFast"
-    "powerOut": "180kW"                 // String (Optional)
-  }
-}
+});
 ```
+
+- **The Optimization:** Distance is calculated in meters, converted to kilometers, and rounded using `$addFields`. The pipeline then uses `$facet` to return paginated results and total matched item counts in a single round-trip database operation, drastically reducing database load.
+
+### 2. Concurrency & Race-Condition Mitigation
+
+In-memory validations are vulnerable to race conditions under load. If two concurrent requests try to reserve the exact same charger slot at the same millisecond, both will pass code checks and write duplicates.
+
+- **The Fix:** We implemented a compound unique index on `{ chargerId: 1, startTime: 1 }` directly on the database. Concurrent duplicate writes are rejected at the engine level, guaranteeing slot reservation integrity.
+
+### 3. Timezone-Safe Slot Scheduling
+
+- **UTC Conversions**: Bookings are stored as UTC Date formats. However, checking slot overlaps requires offset matching. The backend appends Indian Standard Time (IST, `+05:30`) to raw parameters before parsing, keeping database records timezone-safe.
+- **Slot Validation**: Start times are checked to ensure they are not in the past and fit within the station's operational hours (`openTime`/`closeTime`). The slot duration is validated to be exactly 1 hour.
+
+### 4. Database Optimization via Facet Pagination
+
+Pagination typically requires two separate database operations: one query to fetch the current page of records, and another to count the total matching documents for page numbers.
+
+- **The Optimization:** In both `findAllStations` and `getAllBookings` repositories, the engine uses MongoDB `$facet` aggregation pipelines. This allows the database to execute the pagination (`$skip` and `$limit`) and the overall document count in parallel inside a single database round-trip, reducing query overhead by 50%.
+
+### 5. Granular Role-Based Access Control (RBAC)
+ 
+Secure API designs must separate user privileges cleanly to prevent unauthorized operations (vertical authorization bypasses).
+ 
+- **The Implementation:** Enforces route privileges across three distinct roles (`user`, `station_owner`, `admin`) utilizing a declarative Express middleware pipeline. Tokens are verified and user claims are matched against endpoint policies before requests are allowed to reach service layers.
+ 
+### 6. Dynamic Slot Generation Algorithm
+ 
+Computing charger slot availability on the fly requires programmatic interval matching to avoid static timeline limitations.
+ 
+- **The Implementation:** Resolves the operational opening and closing hours of the station, pulls all active bookings for the selected date, and walks through the day in 1-hour intervals. It computes availability dynamically using interval overlap verification, returning an active status timeline to the user.
+ 
+### 7. Strict Booking State Machine
+ 
+To prevent API requests from bypassing the physical check-in flow, the booking lifecycle is managed through a strict state machine:
+ 
+- **Manual updates** (via the `PATCH /booking/:id` gateway) are restricted to `"arrived"` or `"cancelled"`.
+- **System updates** (such as `"charging"` or `"completed"`) are only triggered as side effects of session-start and session-end events, ensuring an active charging session matches the database booking status.
+
+---
+
+## 🔌 API Playbook
+
+Below is the structured API registry.
+
+| Category | Endpoint | Method | Auth | Description |
+| :--- | :--- | :---: | :---: | :--- |
+| **Auth** | `/auth/register` | `POST` | Public | Register a new user, owner, or admin |
+| **Auth** | `/auth/login` | `POST` | Public | Authenticate credentials and get JWT token |
+| **Station** | `/station` | `POST` | Owner/Admin | Create a new charging hub |
+| **Station** | `/station` | `GET` | User | Get and filter stations (includes geolocation search) |
+| **Station** | `/station/:stationId` | `GET` | User | Get detailed station data (includes chargers) |
+| **Station** | `/station/:stationId` | `PUT` | Owner/Admin | Update station metadata |
+| **Station** | `/station/:stationId` | `DELETE` | Admin | Delete station (cascading cleanup) |
+| **Charger** | `/charger` | `POST` | Owner/Admin | Register a charger plug under a station |
+| **Charger** | `/charger/:chargerId` | `GET` | User | Get single charger details |
+| **Charger** | `/charger/station/:stationId`| `GET` | User | Fetch and filter chargers at a station |
+| **Charger** | `/charger/:chargerId` | `PATCH` | Owner/Admin | Update charger status (available/maintenance) |
+| **Charger** | `/charger/:chargerId` | `PUT` | Owner/Admin | Update charger details |
+| **Charger** | `/charger/:chargerId` | `DELETE` | Owner/Admin | Delete charger from station |
+| **Charger** | `/charger/:chargerId/get-slots`| `POST` | User | Fetch slot availability for a date |
+| **Charger** | `/charger/:chargerId/station/:stationId`| `GET` | User | Fetch specific charger in a station |
+| **Booking** | `/booking` | `POST` | User | Book a 1-hour charger slot |
+| **Booking** | `/booking` | `GET` | User/Admin | Search and filter bookings |
+| **Booking** | `/booking/:bookingId` | `GET` | User/Admin | Retrieve specific booking details |
+| **Booking** | `/booking/:bookingId` | `PATCH` | User/Admin | Check in (`arrived`) or cancel (`cancelled`) |
+| **Booking** | `/booking/:bookingId/verify-otp`| `POST` | Owner/Admin | Verify check-in OTP code |
+| **Session** | `/chargerSession/:bookingId/start-session` | `POST` | User | Start charging (requires OTP verified status) |
+| **Session** | `/chargerSession/:bookingId/end-session` | `POST` | User | End charging and calculate billing |
+| **Session** | `/chargerSession/:sessionId` | `GET` | User | Get specific charging session details |
+
+---
+
+### 📂 Detailed Swagger-Style API Reference
+
+Each route details its parameters, request payload constraints, and HTTP response codes.
+
+#### 1. Authentication Endpoints (`/auth`)
+
+<details>
+<summary><b>POST /auth/register</b> - Register User</summary>
+
+*   **Description**: Registers a new User, Station Owner, or Administrator account.
+*   **Security**: None (Public)
+*   **Request Body (application/json)**:
+    | Field | Type | Required | Constraints | Description |
+    | :--- | :---: | :---: | :--- | :--- |
+    | `username` | `string` | Yes | Min 3 characters, Trimmed | Full name of the user |
+    | `phoneNumber`| `string` | Yes | Exact 10 digits, Trimmed | Primary contact number |
+    | `email` | `string` | Yes | Valid email format, Lowercased | User's email address |
+    | `password` | `string` | Yes | Min 6 characters | Plaintext password |
+    | `role` | `string` | Yes | Enum: `user`, `station_owner`, `admin` | Access privilege level |
+    | `vehicles` | `array` | No | - | List of vehicle objects |
+    | `vehicles[].vehicleNo` | `string` | Yes | Exact 10 characters, Uppercased | Vehicle registration number |
+    | `vehicles[].type` | `string` | Yes | Enum: `2wheeler`, `4wheeler` | Vehicle class type |
+*   **Responses**:
+    *   **201 Created**: User created successfully.
+        ```json
+        {
+          "success": true,
+          "message": "user created successfully",
+          "data": {
+            "user": {
+              "_id": "666d92984ea0a1c6a6fcf7a1",
+              "username": "Alex Carter",
+              "phoneNumber": "9876543210",
+              "email": "alex@evolts.com",
+              "role": "user",
+              "vehicles": [{ "vehicleNo": "MH12CD5678", "type": "4wheeler", "_id": "666d92984ea0a1c6a6fcf7a2" }],
+              "createdAt": "2026-06-15T13:40:00.000Z",
+              "updatedAt": "2026-06-15T13:40:00.000Z"
+            },
+            "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+          }
+        }
+        ```
+    *   **400 Bad Request**: Validation constraints violated.
+        ```json
+        { "success": false, "errors": { "fieldErrors": { "email": ["Please enter a valid email address"] } } }
+        ```
+    *   **409 Conflict**: Email is already registered.
+        ```json
+        { "success": false, "message": "user already exists" }
+        ```
 </details>
 
 <details>
-<summary><b>View Success Response (201 Created)</b></summary>
+<summary><b>POST /auth/login</b> - Authenticate User</summary>
 
-```json
-{
-  "success": true,
-  "message": "station created successfully",
-  "data": {
-    "_id": "648a5678ab123cde45678901",
-    "name": "evolts supercharge hub",   // Lowercased automatically in MongoDB
-    "address": "Baner Main Road, Pune",
-    "location": {
-      "type": "Point",
-      "coordinates": [73.7934, 18.5596]
-    },
-    "status": "online",
-    "pricing": 20,
-    "chargerTypes": {
-      "charger": "superFast",
-      "powerOut": "180kW"
-    },
-    "__v": 0
-  }
-}
-```
-</details>
-
-#### Search/Get Charging Stations
-* **Endpoint**: `GET /station`
-* **Access**: Authenticated Users / Admins
-* **Query Parameters**:
-  - `name` (String, Optional) - Case-insensitive regex prefix search
-  - `status` (`online` | `offline`, Optional)
-  - `chargeType` (`slow` | `fast` | `superFast`, Optional)
-  - `minPrice` (Number, Optional, coerced, min 0)
-  - `maxPrice` (Number, Optional, coerced, min 0)
-  - `page` (Number, Optional, Default: `1`)
-  - `limit` (Number, Optional, Default: `10`)
-
-<details>
-<summary><b>View Success Response (200 OK)</b></summary>
-
-```json
-{
-  "success": true,
-  "message": "All Available Stations",
-  "data": {
-    "page": 1,
-    "totalItems": 1,
-    "totalPages": 1,
-    "stations": [
-      {
-        "_id": "648a5678ab123cde45678901",
-        "name": "evolts supercharge hub",
-        "address": "Baner Main Road, Pune",
-        "location": {
-          "type": "Point",
-          "coordinates": [73.7934, 18.5596]
-        },
-        "status": "online",
-        "pricing": 20,
-        "chargerTypes": {
-          "charger": "superFast",
-          "powerOut": "180kW"
-        },
-        "__v": 0
-      }
-    ]
-  }
-}
-```
-</details>
-
-#### Get Single Charging Station Details
-* **Endpoint**: `GET /station/:stationId`
-* **Access**: Authenticated Users / Admins
-* **URL Params**: `stationId` (MongoDB ObjectId)
-
-<details>
-<summary><b>View Success Response (200 OK)</b></summary>
-
-```json
-{
-  "success": true,
-  "message": "Station: evolts supercharge hub",
-  "data": {
-    "_id": "648a5678ab123cde45678901",
-    "name": "evolts supercharge hub",
-    "address": "Baner Main Road, Pune",
-    "location": {
-      "type": "Point",
-      "coordinates": [73.7934, 18.5596]
-    },
-    "status": "online",
-    "pricing": 20,
-    "chargerTypes": {
-      "charger": "superFast",
-      "powerOut": "180kW"
-    },
-    "__v": 0
-  }
-}
-```
-</details>
-
-#### Update Station Details
-* **Endpoint**: `PUT /station/:stationId`
-* **Access**: Admin Only
-* **Request Headers**: `Content-Type: application/json`
-* **URL Params**: `stationId` (MongoDB ObjectId)
-
-<details>
-<summary><b>View Request Body Schema (Partial Update)</b></summary>
-
-```json
-{
-  "status": "offline",
-  "pricing": 25
-}
-```
-*At least one field whitelisted in the service (`name`, `address`, `location`, `status`, `pricing`, `chargerTypes`) must be present.*
-</details>
-
-<details>
-<summary><b>View Success Response (200 OK)</b></summary>
-
-```json
-{
-  "success": true,
-  "message": "Station Updated Successfully",
-  "data": {
-    "_id": "648a5678ab123cde45678901",
-    "name": "evolts supercharge hub",
-    "address": "Baner Main Road, Pune",
-    "location": {
-      "type": "Point",
-      "coordinates": [73.7934, 18.5596]
-    },
-    "status": "offline",
-    "pricing": 25,
-    "chargerTypes": {
-      "charger": "superFast",
-      "powerOut": "180kW"
-    },
-    "__v": 0
-  }
-}
-```
-</details>
-
-#### Delete Charging Station
-* **Endpoint**: `DELETE /station/:stationId`
-* **Access**: Admin Only
-* **URL Params**: `stationId` (MongoDB ObjectId)
-
-<details>
-<summary><b>View Success Response (200 OK)</b></summary>
-
-```json
-{
-  "success": true,
-  "message": "Station Deleted Successfully",
-  "data": {
-    "_id": "648a5678ab123cde45678901",
-    "name": "evolts supercharge hub",
-    "address": "Baner Main Road, Pune",
-    "location": {
-      "type": "Point",
-      "coordinates": [73.7934, 18.5596]
-    },
-    "status": "offline",
-    "pricing": 20,
-    "chargerTypes": {
-      "charger": "superFast",
-      "powerOut": "180kW"
-    },
-    "__v": 0
-  }
-}
-```
+*   **Description**: Authenticates user credentials and issues a JWT token.
+*   **Security**: None (Public)
+*   **Request Body (application/json)**:
+    | Field | Type | Required | Constraints | Description |
+    | :--- | :---: | :---: | :--- | :--- |
+    | `email` | `string` | Yes | Valid email format | User's registered email |
+    | `password` | `string` | Yes | Min 6 characters | User's password |
+*   **Responses**:
+    *   **200 OK**: Login successful. Returns JWT token.
+        ```json
+        {
+          "success": true,
+          "message": "user loggedin successfully",
+          "data": {
+            "user": {
+              "_id": "666d92984ea0a1c6a6fcf7a1",
+              "username": "Alex Carter",
+              "email": "alex@evolts.com",
+              "role": "user",
+              "vehicles": [{ "vehicleNo": "MH12CD5678", "type": "4wheeler" }]
+            },
+            "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+          }
+        }
+        ```
+    *   **401 Unauthorized**: Password does not match.
+        ```json
+        { "success": false, "message": "Password is not Matched" }
+        ```
+    *   **404 Not Found**: Email not registered.
+        ```json
+        { "success": false, "message": "User not exist with this email, plz register" }
+        ```
 </details>
 
 ---
 
-### Booking Endpoints (`/booking`)
-*All requests require the header: `Authorization: Bearer <JWT_TOKEN>`*
-
-#### Reserve a Slot
-* **Endpoint**: `POST /booking`
-* **Access**: Authenticated Users / Admins
-* **Request Headers**: `Content-Type: application/json`
+#### 2. Charging Station Endpoints (`/station`)
 
 <details>
-<summary><b>View Request Body Schema</b></summary>
+<summary><b>POST /station</b> - Create Hub</summary>
 
-```json
-{
-  "stationId": "648a5678ab123cde45678901",         // String, valid MongoDB ObjectId
-  "date": "2026-06-10",                           // String, regex YYYY-MM-DD
-  "startTime": "14:00",                           // String, regex HH:mm
-  "endTime": "15:00",                             // String, regex HH:mm
-  "price": 20,                                    // Number, min 0
-  "status": "booked"                              // String, "booked" | "arrived" | "charging" | "completed" | "cancelled"
-}
-```
+*   **Description**: Registers a new charging hub.
+*   **Security**: Bearer Token (`station_owner` or `admin`)
+*   **Request Body (application/json)**:
+    | Field | Type | Required | Constraints | Description |
+    | :--- | :---: | :---: | :--- | :--- |
+    | `ownerId` | `string` | Yes | Valid MongoID string | Associated owner User ID |
+    | `name` | `string` | Yes | Min 3 characters, Trimmed | Station name |
+    | `address` | `string` | Yes | Min 5 characters, Trimmed | Detailed station address |
+    | `location` | `object` | Yes | GeoJSON structure | Geographic location |
+    | `location.type` | `string` | Yes | Must be `"Point"` | GeoJSON coordinates type |
+    | `location.coordinates`| `array` | Yes | Exactly `[lng, lat]` numbers | Location coordinates |
+    | `status` | `string` | Yes | Enum: `"online"`, `"offline"` | Operational status |
+    | `pricing` | `number` | Yes | Min 1 | Base charging hourly pricing |
+    | `openTime` | `string` | Yes | Format: `HH:mm` (24hr clock) | Operational opening hour |
+    | `closeTime` | `string` | Yes | Format: `HH:mm` (24hr clock) | Operational closing hour |
+*   **Responses**:
+    *   **201 Created**: Station registered successfully.
+        ```json
+        {
+          "success": true,
+          "message": "station created successfully",
+          "data": {
+            "_id": "666d9b324ea0a1c6a6fcf7b5",
+            "ownerId": "666d92984ea0a1c6a6fcf7a1",
+            "name": "evolts west hub",
+            "address": "Baner Link Road, Pune",
+            "location": { "type": "Point", "coordinates": [73.7915, 18.5601] },
+            "status": "online",
+            "pricing": 35,
+            "openTime": "07:00",
+            "closeTime": "23:00"
+          }
+        }
+        ```
+    *   **409 Conflict**: A station already exists at this exact coordinate.
+        ```json
+        { "success": false, "message": "station already Exists" }
+        ```
 </details>
 
 <details>
-<summary><b>View Success Response (201 Created)</b></summary>
+<summary><b>GET /station</b> - Search Stations</summary>
 
-```json
-{
-  "success": true,
-  "message": "Booking created Successfully",
-  "data": {
-    "_id": "648a9999ab123cde45678902",
-    "userId": "648a123abc456def78901234",          // Extracted from JWT Claims
-    "stationId": "648a5678ab123cde45678901",
-    "startTime": "2026-06-10T14:00:00.000Z",       // Converted to ISO UTC Date
-    "endTime": "2026-06-10T15:00:00.000Z",         // Converted to ISO UTC Date
-    "price": 20,
-    "bookingDate": "2026-06-09T08:15:30.000Z",     // Timestamp of creation
-    "status": "booked",
-    "createdAt": "2026-06-09T08:15:30.000Z",
-    "updatedAt": "2026-06-09T08:15:30.000Z",
-    "__v": 0
-  }
-}
-```
-</details>
-
-#### Check Available Slots for Date
-* **Endpoint**: `GET /booking/slots`
-* **Access**: Authenticated Users / Admins
-* **Request Headers**: `Content-Type: application/json`
-
-<details>
-<summary><b>View Request Body Schema</b></summary>
-
-```json
-{
-  "stationId": "648a5678ab123cde45678901",         // String, valid MongoDB ObjectId
-  "date": "2026-06-10"                            // String, regex YYYY-MM-DD
-}
-```
+*   **Description**: Queries stations using filters, sorting, and geospatial proximity calculations.
+*   **Security**: Bearer Token (Authenticated Users)
+*   **Query Parameters**:
+    | Parameter | Type | Required | Defaults | Description |
+    | :--- | :---: | :---: | :---: | :--- |
+    | `ownerId` | `string` | No | - | Filters stations owned by owner |
+    | `name` | `string` | No | - | Case-insensitive prefix filter |
+    | `status` | `string` | No | - | Enum: `online`, `offline` |
+    | `minPrice` / `maxPrice`| `number` | No | - | Pricing range filter |
+    | `lat` / `lng` | `number` | No | - | Center coordinate for proximity search |
+    | `radius` | `number` | No | `5000` | Search radius boundary in meters |
+    | `page` | `number` | No | `1` | Pagination page index |
+    | `limit` | `number` | No | `10` | Pagination page size |
+*   **Responses**:
+    *   **200 OK**: Return search matching results.
+        ```json
+        {
+          "success": true,
+          "message": "All Available Stations",
+          "data": {
+            "page": 1,
+            "limit": 10,
+            "totalItems": 1,
+            "totalPages": 1,
+            "stations": [{ "_id": "666d9b324ea0a1c6a6fcf7b5", "name": "evolts west hub", "distance": 0.8 }]
+          }
+        }
+        ```
 </details>
 
 <details>
-<summary><b>View Success Response (200 OK)</b></summary>
+<summary><b>GET /station/:stationId</b> - Read Hub details</summary>
 
-```json
-{
-  "success": true,
-  "message": "All Available Slots",
-  "data": {
-    "total": 23,
-    "availableSlots": [
-      { "startTime": "00:00", "endTime": "01:00" },
-      { "startTime": "01:00", "endTime": "02:00" },
-      { "startTime": "02:00", "endTime": "03:00" },
-      { "startTime": "03:00", "endTime": "04:00" },
-      { "startTime": "04:00", "endTime": "05:00" },
-      { "startTime": "05:00", "endTime": "06:00" },
-      { "startTime": "06:00", "endTime": "07:00" },
-      { "startTime": "07:00", "endTime": "08:00" },
-      { "startTime": "08:00", "endTime": "09:00" },
-      { "startTime": "09:00", "endTime": "10:00" },
-      { "startTime": "10:00", "endTime": "11:00" },
-      { "startTime": "11:00", "endTime": "12:00" },
-      { "startTime": "12:00", "endTime": "13:00" },
-      { "startTime": "13:00", "endTime": "14:00" },
-      { "startTime": "15:00", "endTime": "16:00" },
-      { "startTime": "16:00", "endTime": "17:00" },
-      { "startTime": "17:00", "endTime": "18:00" },
-      { "startTime": "18:00", "endTime": "19:00" },
-      { "startTime": "19:00", "endTime": "20:00" },
-      { "startTime": "20:00", "endTime": "21:00" },
-      { "startTime": "21:00", "endTime": "22:00" },
-      { "startTime": "22:00", "endTime": "23:00" },
-      { "startTime": "23:00", "endTime": "24:00" }
-    ]
-  }
-}
-```
-*Notice that `14:00 - 15:00` is automatically omitted since it was booked in the previous step.*
+*   **Description**: Fetches metadata and nested active chargers for a specific station.
+*   **Security**: Bearer Token (Authenticated Users)
+*   **Path Parameters**:
+    *   `stationId`: Valid MongoDB ObjectId.
+*   **Responses**:
+    *   **200 OK**: Details loaded successfully.
+        ```json
+        {
+          "success": true,
+          "message": "Station: evolts west hub",
+          "data": {
+            "_id": "666d9b324ea0a1c6a6fcf7b5",
+            "name": "evolts west hub",
+            "chargers": [{ "_id": "666da2354ea0a1c6a6fcf7c9", "chargerNo": "CH-01", "status": "available" }]
+          }
+        }
+        ```
+    *   **404 Not Found**: Station ID does not exist.
+        ```json
+        { "success": false, "message": "Station Not Found" }
+        ```
 </details>
 
-#### Fetch All Bookings
-* **Endpoint**: `GET /booking`
-* **Access**: Authenticated Users / Admins
-* **Query Parameters**:
-  - `stationId` (String, Optional)
-  - `userId` (String, Optional) - Checked for admin role; non-admins are forced to their own JWT claims ID.
-  - `status` (`booked` | `arrived` | `charging` | `completed` | `cancelled`, Optional)
-  - `page` (Number, Default: `1`)
-  - `limit` (Number, Default: `10`)
-
 <details>
-<summary><b>View Success Response (200 OK)</b></summary>
+<summary><b>PUT /station/:stationId</b> - Update Hub</summary>
 
-```json
-{
-  "success": true,
-  "message": "All Bookings List",
-  "data": {
-    "page": 1,
-    "limit": 10,
-    "totalItems": 1,
-    "totalPages": 1,
-    "bookings": [
-      {
-        "_id": "648a9999ab123cde45678902",
-        "userId": "648a123abc456def78901234",
-        "stationId": "648a5678ab123cde45678901",
-        "startTime": "2026-06-10T14:00:00.000Z",
-        "endTime": "2026-06-10T15:00:00.000Z",
-        "price": 20,
-        "bookingDate": "2026-06-09T08:15:30.000Z",
-        "status": "booked",
-        "createdAt": "2026-06-09T08:15:30.000Z",
-        "updatedAt": "2026-06-09T08:15:30.000Z",
-        "__v": 0
-      }
-    ]
-  }
-}
-```
+*   **Description**: Performs a partial metadata update on a station.
+*   **Security**: Bearer Token (`station_owner` or `admin`)
+*   **Path Parameters**:
+    *   `stationId`: Valid MongoDB ObjectId.
+*   **Request Body (application/json)**: Partial matching schema of creation payload (at least 1 key required).
+*   **Responses**:
+    *   **200 OK**: Station updated.
+        ```json
+        {
+          "success": true,
+          "message": "Station Updated Successfully",
+          "data": { "_id": "666d9b324ea0a1c6a6fcf7b5", "status": "offline" }
+        }
+        ```
 </details>
 
-#### Fetch Single Booking Details
-* **Endpoint**: `GET /booking/:bookingId`
-* **Access**: Owner User or Admin
-* **URL Params**: `bookingId` (MongoDB ObjectId)
-
 <details>
-<summary><b>View Success Response (200 OK)</b></summary>
+<summary><b>DELETE /station/:stationId</b> - Delete Hub</summary>
 
-```json
-{
-  "success": true,
-  "message": "Booking Id: 648a9999ab123cde45678902",
-  "data": {
-    "_id": "648a9999ab123cde45678902",
-    "userId": "648a123abc456def78901234",
-    "stationId": "648a5678ab123cde45678901",
-    "startTime": "2026-06-10T14:00:00.000Z",
-    "endTime": "2026-06-10T15:00:00.000Z",
-    "price": 20,
-    "bookingDate": "2026-06-09T08:15:30.000Z",
-    "status": "booked",
-    "createdAt": "2026-06-09T08:15:30.000Z",
-    "updatedAt": "2026-06-09T08:15:30.000Z",
-    "__v": 0
-  }
-}
-```
-</details>
-
-#### Patch Booking Status
-* **Endpoint**: `PATCH /booking/:bookingId`
-* **Access**: Owner User or Admin
-* **Query Parameters**:
-  - `status` (Required, e.g. `?status=arrived`)
-* **Transition Checks**: Enforces the State Machine rules before committing changes to MongoDB.
-
-<details>
-<summary><b>View Success Response (200 OK)</b></summary>
-
-```json
-{
-  "success": true,
-  "message": "Booking Updated Successfully",
-  "data": {
-    "_id": "648a9999ab123cde45678902",
-    "userId": "648a123abc456def78901234",
-    "stationId": "648a5678ab123cde45678901",
-    "startTime": "2026-06-10T14:00:00.000Z",
-    "endTime": "2026-06-10T15:00:00.000Z",
-    "price": 20,
-    "bookingDate": "2026-06-09T08:15:30.000Z",
-    "status": "arrived",
-    "createdAt": "2026-06-09T08:15:30.000Z",
-    "updatedAt": "2026-06-09T14:05:00.000Z",
-    "__v": 0
-  }
-}
-```
+*   **Description**: Deletes a station from the system.
+*   **Security**: Bearer Token (`admin` only)
+*   **Path Parameters**:
+    *   `stationId`: Valid MongoDB ObjectId.
+*   **Responses**:
+    *   **200 OK**: Station deleted.
+        ```json
+        { "success": true, "message": "Station Deleted Successfully" }
+        ```
 </details>
 
 ---
 
-## 🚀 Getting Started
+#### 3. EV Charger Endpoints (`/charger`)
 
-### Prerequisites
+<details>
+<summary><b>POST /charger</b> - Register Charger</summary>
+
+*   **Description**: Mounts a new charging plug hardware under a station hub.
+*   **Security**: Bearer Token (`station_owner` or `admin`)
+*   **Request Body (application/json)**:
+    | Field | Type | Required | Constraints | Description |
+    | :--- | :---: | :---: | :--- | :--- |
+    | `stationId` | `string` | Yes | Valid MongoID | Parent station ID |
+    | `chargerNo` | `string` | Yes | Min 3 characters, Trimmed | Unique code identifier |
+    | `connectorType`| `string` | Yes | Enum: `CCS`, `CHAdeMO`, `NACS`, `Type2` | EV plug type |
+    | `status` | `string` | Yes | Enum: `available`, `maintenance` | Operational status |
+    | `powerKw` | `number` | Yes | Min 0 | Capacity in Kilowatts |
+    | `pricingPerKwh`| `number` | Yes | Min 0 | Billing rate per kWh |
+*   **Responses**:
+    *   **201 Created**: Charger registered.
+        ```json
+        {
+          "success": true,
+          "message": "Charger Created Successfully",
+          "data": { "_id": "666da2354ea0a1c6a6fcf7ca", "chargerNo": "CH-02" }
+        }
+        ```
+    *   **409 Conflict**: Charger number already exists at this station.
+        ```json
+        { "success": false, "message": "ChargerNo already exists in this station" }
+        ```
+</details>
+
+<details>
+<summary><b>GET /charger/:chargerId</b> - Get Charger</summary>
+
+*   **Description**: Fetches individual charger details.
+*   **Security**: Bearer Token (Authenticated Users)
+*   **Path Parameters**:
+    *   `chargerId`: Valid MongoDB ObjectId.
+*   **Responses**:
+    *   **200 OK**: Success response.
+</details>
+
+<details>
+<summary><b>GET /charger/station/:stationId</b> - List Hub Chargers</summary>
+
+*   **Description**: Returns paginated and filtered chargers belonging to a station.
+*   **Security**: Bearer Token (Authenticated Users)
+*   **Path Parameters**:
+    *   `stationId`: Valid MongoDB ObjectId.
+*   **Query Parameters**: `chargerNo`, `connectorType`, `status`, `minPower`, `maxPower`, `minPrice`, `maxPrice`, `page`, `limit`
+*   **Responses**:
+    *   **200 OK**: Returns listing.
+</details>
+
+<details>
+<summary><b>PATCH /charger/:chargerId</b> - Toggle Status</summary>
+
+*   **Description**: Quickly updates charger operational status.
+*   **Security**: Bearer Token (`station_owner` or `admin`)
+*   **Query Parameters**:
+    *   `status` (Required): Enum: `available`, `maintenance`.
+*   **Responses**:
+    *   **200 OK**: Status updated.
+</details>
+
+<details>
+<summary><b>PUT /charger/:chargerId</b> - Update Charger</summary>
+
+*   **Description**: Partial updates of charger configurations.
+*   **Security**: Bearer Token (`station_owner` or `admin`)
+*   **Responses**:
+    *   **200 OK**: Updated object returned.
+</details>
+
+<details>
+<summary><b>DELETE /charger/:chargerId</b> - Delete Charger</summary>
+
+*   **Description**: Deletes a charger plug.
+*   **Security**: Bearer Token (`station_owner` or `admin`)
+*   **Responses**:
+    *   **200 OK**: Charger deleted.
+</details>
+
+<details>
+<summary><b>POST /charger/:chargerId/get-slots</b> - Query Availability Slots</summary>
+
+*   **Description**: Computes hourly slot availability arrays for a target date.
+*   **Security**: Bearer Token (Authenticated Users)
+*   **Path Parameters**:
+    *   `chargerId`: Valid MongoDB ObjectId.
+*   **Request Body (application/json)**:
+    *   `date` (Required): String format `YYYY-MM-DD`.
+*   **Responses**:
+    *   **200 OK**: List of slots with boolean flags.
+        ```json
+        {
+          "success": true,
+          "message": "available slots of charger: 666da2354ea0a1c6a6fcf7ca",
+          "data": [
+            { "slotStart": "07:00", "slotEnd": "08:00", "isAvailable": true },
+            { "slotStart": "08:00", "slotEnd": "09:00", "isAvailable": false }
+          ]
+        }
+        ```
+</details>
+
+---
+
+#### 4. Booking Endpoints (`/booking`)
+
+<details>
+<summary><b>POST /booking</b> - Reserve a Charger Slot</summary>
+
+*   **Description**: Reserves an available 1-hour charging slot.
+*   **Security**: Bearer Token (Authenticated Users)
+*   **Request Body (application/json)**:
+    | Field | Type | Required | Constraints | Description |
+    | :--- | :---: | :---: | :--- | :--- |
+    | `stationId` | `string` | Yes | Valid MongoID | Target station hub ID |
+    | `chargerId` | `string` | Yes | Valid MongoID | Target charger plug ID |
+    | `date` | `string` | Yes | Format: `YYYY-MM-DD` | Date of reservation |
+    | `startTime` | `string` | Yes | Format: `HH:mm` (24hr clock) | Beginning time of slot |
+    | `endTime` | `string` | Yes | Format: `HH:mm` (24hr clock) | Ending time of slot |
+*   **Responses**:
+    *   **201 Created**: Booking confirmed.
+        ```json
+        {
+          "success": true,
+          "message": "Booking created Successfully",
+          "data": {
+            "_id": "666da6e14ea0a1c6a6fcf7df",
+            "userId": "666d92984ea0a1c6a6fcf7a1",
+            "stationId": "666d9b324ea0a1c6a6fcf7b5",
+            "chargerId": "666da2354ea0a1c6a6fcf7ca",
+            "startTime": "2026-06-16T01:30:00.000Z",
+            "endTime": "2026-06-16T02:30:00.000Z",
+            "status": "booked"
+          }
+        }
+        ```
+    *   **409 Conflict**: This charger has an overlapping active booking at the same hour.
+        ```json
+        { "success": false, "message": "Booking already Exists at this slot Time" }
+        ```
+    *   **400 Bad Request**: Invalid inputs (e.g. time in the past, duration not exactly 1 hour).
+</details>
+
+<details>
+<summary><b>GET /booking</b> - Query Bookings</summary>
+
+*   **Description**: Returns paginated listings of bookings. Drivers are restricted to their own reservations, while station owners can view bookings at their stations.
+*   **Security**: Bearer Token (Authenticated Users)
+*   **Query Parameters**: `stationId`, `userId`, `status`, `isVerified`, `date`, `startTime`, `endTime`, `page`, `limit`
+*   **Responses**:
+    *   **200 OK**: Listings matches.
+</details>
+
+<details>
+<summary><b>GET /booking/:bookingId</b> - Read Booking details</summary>
+
+*   **Description**: Fetches metadata schemas and entity relationships for a specific booking.
+*   **Security**: Bearer Token (Booking Owner / Owner / Admin)
+*   **Responses**:
+    *   **200 OK**: Success payload.
+</details>
+
+<details>
+<summary><b>PATCH /booking/:bookingId</b> - Update Status (Arrived / Cancelled)</summary>
+
+*   **Description**: Initiates state machine transitions. Used to cancel bookings or mark check-in arrival.
+*   **Security**: Bearer Token (Booking Owner / Owner / Admin)
+*   **Query Parameters**:
+    *   `status` (Required): Enum: `arrived`, `cancelled`.
+*   **Responses**:
+    *   **200 OK**: Status updated. Generates and returns a 6-digit OTP code when transitioning to `"arrived"`.
+        ```json
+        {
+          "success": true,
+          "message": "Booking Updated Successfully",
+          "data": {
+            "_id": "666da6e14ea0a1c6a6fcf7df",
+            "status": "arrived",
+            "otp": "239102",
+            "isVerified": false
+          }
+        }
+        ```
+    *   **400 Bad Request**: Invalid state machine transition (e.g. attempting to cancel an already completed booking).
+</details>
+
+<details>
+<summary><b>POST /booking/:bookingId/verify-otp</b> - Check-in OTP verification</summary>
+
+*   **Description**: Validates check-in OTP presented by the driver at the hub, verifying the booking and initializing a pending charging session.
+*   **Security**: Bearer Token (`station_owner` or `admin`)
+*   **Request Body (application/json)**:
+    *   `otp` (Required): Exact 6-digit string matching the generated OTP.
+*   **Responses**:
+    *   **200 OK**: OTP verified.
+        ```json
+        {
+          "success": true,
+          "message": "otp verified successfully",
+          "data": {
+            "_id": "666da6e14ea0a1c6a6fcf7df",
+            "status": "arrived",
+            "isVerified": true
+          }
+        }
+        ```
+    *   **400 Bad Request**: Invalid OTP or booking has not reached the `"arrived"` state.
+</details>
+
+---
+
+#### 5. Charging Sessions (`/chargerSession`)
+
+<details>
+<summary><b>POST /chargerSession/:bookingId/start-session</b> - Start Session</summary>
+
+*   **Description**: Activates physical power flow. The booking status is transitioned to `"charging"`.
+*   **Security**: Bearer Token (Authenticated Users)
+*   **Path Parameters**:
+    *   `bookingId`: Valid MongoDB ObjectId.
+*   **Responses**:
+    *   **200 OK**: Session activated.
+        ```json
+        {
+          "success": true,
+          "message": "charging session started successfully",
+          "data": {
+            "_id": "666daf824ea0a1c6a6fcf8e0",
+            "bookingId": "666da6e14ea0a1c6a6fcf7df",
+            "startedAt": "2026-06-16T07:15:00.000Z",
+            "status": "active"
+          }
+        }
+        ```
+    *   **400 Bad Request**: OTP was not verified yet.
+</details>
+
+<details>
+<summary><b>POST /chargerSession/:bookingId/end-session</b> - End Session & Bill</summary>
+
+*   **Description**: Stops power flow and calculates energy consumption, duration, and billing costs. Transitions the booking status to `"completed"`.
+*   **Security**: Bearer Token (Authenticated Users)
+*   **Path Parameters**:
+    *   `bookingId`: Valid MongoDB ObjectId.
+*   **Responses**:
+    *   **200 OK**: Session billed and completed.
+        ```json
+        {
+          "success": true,
+          "message": "charging session ended successfully",
+          "data": {
+            "_id": "666daf824ea0a1c6a6fcf8e0",
+            "bookingId": "666da6e14ea0a1c6a6fcf7df",
+            "startedAt": "2026-06-16T07:15:00.000Z",
+            "endedAt": "2026-06-16T07:45:00.000Z",
+            "energyConsumedKwh": 125,
+            "pricePerKwh": 18,
+            "total": 2250,
+            "status": "completed"
+          }
+        }
+        ```
+</details>
+
+<details>
+<summary><b>GET /chargerSession/:sessionId</b> - Get Session details</summary>
+
+*   **Description**: Fetches invoicing metadata for a specific charging session.
+*   **Security**: Bearer Token (Authenticated Users)
+*   **Path Parameters**:
+    *   `sessionId`: Valid MongoDB ObjectId.
+*   **Responses**:
+    *   **200 OK**: Returns populated details.
+</details>
+
+---
+
+## ⚙️ Setup & Local Development
+
+### 1. Prerequisites
+
 - Node.js (v18.0.0+)
-- MongoDB Atlas account or local database instance
+- MongoDB Instance (Local MongoDB or Atlas URI)
 
-### Environment Configuration
-Create an `.env` file in the project's root folder:
+### 2. Environment Variables
+
+Create a `.env` file in the root backend directory:
+
 ```env
 PORT=5000
-MONGO_URI=mongodb+srv://<username>:<password>@cluster.mongodb.net/evolts_db
-JWT_SECRET=your_jwt_signature_secret_key_here
+MONGO_URI=mongodb+srv://<user>:<password>@cluster.mongodb.net/evolts_db
+JWT_SECRET=your_jwt_signing_key_secret
+FRONTEND_URL=http://localhost:5173
 ```
 
-### Installation & Execution
-1. Install dependencies:
-   ```bash
-   npm install
-   ```
-2. Run in Development Mode:
-   ```bash
-   npm run dev
-   ```
-3. Run in Production Mode:
-   ```bash
-   node index.js
-   ```
-   
----
+### 3. Run Locally
 
+```bash
+# Install dependencies
+npm install
 
+# Run in development mode (using nodemon)
+npm run dev
+
+# Run in production mode
+npm start
+```

@@ -1,6 +1,7 @@
 /** @format */
 
 const { stationModel } = require("./station.model");
+const mongoose = require("mongoose");
 
 const createStation = async (data) => {
   return await stationModel.create(data);
@@ -74,7 +75,44 @@ const findAllStations = async (
 };
 
 const findStationById = async (id) => {
-  return await stationModel.findById(id);
+  // return await stationModel.findById(id);
+  const [station] = await stationModel.aggregate([
+    {
+      $match: { _id: new mongoose.Types.ObjectId(id) },
+    },
+    {
+      $lookup: {
+        from: "chargers",
+        let: { stationId: "$_id" },
+        pipeline: [
+          {
+            $match: {
+              $expr: {
+                $eq: ["$stationId", "$$stationId"],
+              },
+              // status: "available",
+            },
+          },
+          {
+            $project: {
+              createdAt: 0,
+              updatedAt: 0,
+            },
+          },
+        ],
+        // localField: "_id",
+        // foreignField: "stationId",
+        as: "chargers",
+      },
+    },
+    // {
+    //   $project: {
+    //     createdAt: 0,
+    //     updatedAt: 0,
+    //   },
+    // },
+  ]);
+  return station;
 };
 
 const updateStationById = async (id, data) => {

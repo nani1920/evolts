@@ -11,6 +11,7 @@ const {
   getAvailableSlotsService,
   getBookingsByStationIdService,
   getBookingsByUserIdService,
+  verifyBookingOtpService,
 } = require("./booking.service");
 
 const createBooking = async (req, res) => {
@@ -85,6 +86,22 @@ const updateBookingStatusById = async (req, res) => {
   }
 };
 
+const verifyBookingOtp = async (req, res) => {
+  try {
+    const booking = await verifyBookingOtpService(
+      req.body,
+      req.params.bookingId,
+    );
+    sendResponse(res, 200, "otp verified successfully", booking);
+  } catch (error) {
+    sendErrorResponse(
+      res,
+      error.statusCode || 500,
+      error.message || "Internal Server Error",
+    );
+  }
+};
+
 // const cancelBookingById = async (req, res) => {
 //   try {
 //     const booking = await cancelBookingByIdService(req.params);
@@ -130,6 +147,7 @@ module.exports = {
   getBookingById,
   updateBookingStatusById,
   getAvailableSlots,
+  verifyBookingOtp,
   // cancelBookingById,
   // getAllBookingsByStationId,
   // getAllBookingsByUserId,

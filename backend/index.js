@@ -34,10 +34,14 @@ app.use(helmet());
 const authRoute = require("./src/module/auth/auth.routes");
 const stationRoute = require("./src/module/stations/station.routes");
 const bookingRoute = require("./src/module/bookings/bookings.routes");
+const chargerRoute = require("./src/module/chargers/chargers.routes");
+const chargerSessionRoute = require("./src/module/chargingSession/chargingSession.routes");
 
 app.use("/auth", authRoute);
 app.use("/station", stationRoute);
 app.use("/booking", bookingRoute);
+app.use("/charger", chargerRoute);
+app.use("/chargerSession", chargerSessionRoute);
 
 const startServer = async () => {
   try {

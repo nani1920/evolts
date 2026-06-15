@@ -25,7 +25,7 @@ const createStation = async (req, res) => {
 
 const getStations = async (req, res) => {
   try {
-    const stations = await getAllStationsService(req.query);
+    const stations = await getAllStationsService(req.query, req.user);
 
     return sendResponse(res, 200, "All Available Stations", stations);
   } catch (error) {

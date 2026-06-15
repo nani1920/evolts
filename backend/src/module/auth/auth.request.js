@@ -14,7 +14,7 @@ const registerRequest = z
       .length(10, "phoneNumber should be exact 10 characters"),
     email: z.string().trim().email("Please enter a valid email address"),
     password: z.string().min(6, "Password must be atleast 6 characters"),
-    role: z.enum(["user", "admin"]).optional(),
+    role: z.enum(["user", "station_owner", "admin"]),
     vehicles: z
       .array(
         z.object({
