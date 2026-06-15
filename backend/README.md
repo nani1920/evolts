@@ -2,6 +2,9 @@
 
 # ⚡ Evolts Backend Engine
 
+[![Live API](https://img.shields.io/badge/Live%20API-Render-brightgreen?style=for-the-badge&logo=render)](https://evolts-jk0p.onrender.com)
+**Live API Deployment:** [https://evolts-jk0p.onrender.com](https://evolts-jk0p.onrender.com)
+
 An enterprise-grade, high-performance RESTful API powering **Evolts**—a smart Electric Vehicle (EV) Charging Station Locator and Reservation platform.
 
 This engine is built on **Node.js, Express, and MongoDB**, utilizing **Mongoose** for modeling, **Zod** for schema validation, and **JSON Web Tokens (JWT)** for role-based security.
@@ -10,6 +13,7 @@ This engine is built on **Node.js, Express, and MongoDB**, utilizing **Mongoose*
 
 ## 📖 Table of Contents
 
+- [🛠️ Technology Stack](#%EF%B8%8F-technology-stack)
 - [🎯 Core Features Showcase](#-core-features-showcase)
 - [🏗️ Architectural Blueprint](#%EF%B8%8F-architectural-blueprint)
 - [🗃️ Database Schema & Relational Design](#%EF%B8%8F-database-schema--relational-design)
@@ -23,6 +27,18 @@ This engine is built on **Node.js, Express, and MongoDB**, utilizing **Mongoose*
   - [7. Strict Booking State Machine](#7-strict-booking-state-machine)
 - [🔌 API Playbook](#-api-playbook)
 - [⚙️ Setup & Local Development](#%EF%B8%8F-setup--local-development)
+
+---
+
+## 🛠️ Technology Stack
+
+The backend engine is engineered using modern, robust, and secure technologies:
+
+- **Runtime & Framework**: ![Node.js](https://img.shields.io/badge/Node.js-339933?style=flat-square&logo=node.js&logoColor=white) ![Express](https://img.shields.io/badge/Express-000000?style=flat-square&logo=express&logoColor=white) (Express.js v5)
+- **Database**: ![MongoDB](https://img.shields.io/badge/MongoDB-47A248?style=flat-square&logo=mongodb&logoColor=white) ![Mongoose](https://img.shields.io/badge/Mongoose-880000?style=flat-square&logo=mongoose&logoColor=white) (Mongoose ODM)
+- **Validation**: ![Zod](https://img.shields.io/badge/Zod-3068B7?style=flat-square&logo=zod&logoColor=white) (Zod Schemas)
+- **Security & Protection**: ![JWT](https://img.shields.io/badge/JWT-black?style=flat-square&logo=json-web-tokens) (JSON Web Tokens), `bcrypt` (Hashing), and ![Helmet](https://img.shields.io/badge/Helmet-Security-blue?style=flat-square) (HTTP headers security)
+- **Traffic Management**: `express-rate-limit` (DDoS mitigation) and `cors` (Cross-Origin Resource Sharing)
 
 ---
 
