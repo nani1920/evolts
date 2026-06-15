@@ -37,6 +37,10 @@ const bookingRoute = require("./src/module/bookings/bookings.routes");
 const chargerRoute = require("./src/module/chargers/chargers.routes");
 const chargerSessionRoute = require("./src/module/chargingSession/chargingSession.routes");
 
+app.get("/health", (req, res) => {
+  res.status(200).json({ success: true, message: "Server is healthy" });
+});
+
 app.use("/auth", authRoute);
 app.use("/station", stationRoute);
 app.use("/booking", bookingRoute);
