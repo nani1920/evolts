@@ -1,11 +1,9 @@
 /** @format */
 
 const createError = (statusCode, message) => {
-  return {
-    success: false,
-    statusCode,
-    message,
-  };
+  const err = new Error(message);
+  err.statusCode = statusCode;
+  return err;
 };
 
 module.exports = {
